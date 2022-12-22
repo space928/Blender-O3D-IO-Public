@@ -1,0 +1,21 @@
+source:
+  copy_from:
+    - "o3d_io"
+    - "__init__.py"
+    - "README"
+    - "LICENSE"
+    - ".github"
+    - ".publish"
+target:
+  repo: "space928/Blender-O3D-IO-Public"
+  maxsize_commit_MB: 1000
+  commit_message: "Sync with private repo"
+  copy_to:
+    - "o3d_io"
+    - "__init__.py"
+    - "README"
+    - "LICENSE"
+    - ".github"
+    - ".publish"
+  remove_after_copy:
+    - "o3d_io/o3d_crypto.py"

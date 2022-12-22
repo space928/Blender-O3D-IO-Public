@@ -56,26 +56,6 @@ def log(*args):
     print("[O3D_IO]", *args)
 
 
-# https://blender.stackexchange.com/a/243063
-def run_ops_without_view_layer_update(func, *args):
-    from bpy.ops import _BPyOpsSubModOp
-
-    view_layer_update = _BPyOpsSubModOp._view_layer_update
-
-    def dummy_view_layer_update(context):
-        pass
-
-    try:
-        _BPyOpsSubModOp._view_layer_update = dummy_view_layer_update
-
-        ret = func(*args)
-
-    finally:
-        _BPyOpsSubModOp._view_layer_update = view_layer_update
-
-    return ret
-
-
 def make_annotations(cls):
     """
     Converts class fields to annotations if running with Blender 2.8
@@ -125,7 +105,7 @@ class ImportModelCFG(bpy.types.Operator, ImportHelper):
         :return: success message
         """
         context.window.cursor_set('WAIT')
-        run_ops_without_view_layer_update(io_o3d_import.do_import, self.filepath, context)
+        io_o3d_import.do_import(self.filepath, context)
         context.window.cursor_set('DEFAULT')
 
         return {'FINISHED'}

@@ -13,7 +13,7 @@ def log(*args):
 # Try to import o3d cryptography module (not available in public plugin release)
 try:
     from .o3d_crypto import init_rand, decrypt_vert, encrypt_vert
-except (ModuleNotFoundError, ImportError):
+except ImportError:
     log("[WARNING] o3d_crypto.py could not be loaded! O3D encryption and decryption will not work correctly.")
 
 

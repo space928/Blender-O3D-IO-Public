@@ -17,8 +17,9 @@ def log(*args):
     print("[O3D_Export]", *args)
 
 
-def export_mesh(filepath, context, mesh, materials):
+def export_mesh(filepath, context, mesh, materials, o3d_version):
     # Create o3d file
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
     with open(filepath, "wb") as f:
         has_uvs = len(mesh.uv_layers) > 0
         if has_uvs:
@@ -45,7 +46,7 @@ def export_mesh(filepath, context, mesh, materials):
                     vert_map[(v_co, v_nrm)] = vert_count
                     verts.append(
                         (-v_co[0], v_co[1], v_co[2],
-                         -v_nrm[0], v_nrm[2], v_nrm[1],
+                         -v_nrm[0], v_nrm[1], v_nrm[2],
                          v_uv[0], 1 - v_uv[1]))
                     tri.append(vert_count)
                     vert_count += 1
@@ -76,19 +77,23 @@ def export_mesh(filepath, context, mesh, materials):
                 o3d_mat.extend([mat.specular, mat.specular, mat.specular])
                 o3d_mat.extend(mat.emission_color)
                 o3d_mat.append(1 - mat.roughness)
-                o3d_mat.append(os.path.basename(mat.base_color_texture.image.filepath))
+                if mat.base_color_texture.image is not None:
+                    o3d_mat.append(os.path.basename(mat.base_color_texture.image.filepath))
+                else:
+                    o3d_mat.append("")
 
         o3dconvert.export_o3d(f, verts, tris, o3d_mats, [], None,
-                              version=1,
+                              version=o3d_version,
                               encrypted=False, encryption_key=0xffffffff,
                               long_triangle_indices=False,
                               alt_encryption_seed=True,
                               invert_triangle_winding=True)
 
 
-def do_export(filepath, context, global_matrix, use_selection):
+def do_export(filepath, context, global_matrix, use_selection, o3d_version):
     """
     Exports the selected CFG/SCO/O3D file
+    :param o3d_version: O3D version to export the file as
     :param use_selection: export only the selected objects
     :param global_matrix: transformation matrix to apply before export
     :param filepath: the path to the file to import
@@ -152,7 +157,7 @@ def do_export(filepath, context, global_matrix, use_selection):
                 path = filepath
             else:
                 path = os.path.join(obj_root, os.path.basename(filepath)[:-4] + "-" + ob.name + ".o3d")
-        export_mesh(path, context, me, ob_eval.material_slots)
+        export_mesh(path, context, me, ob_eval.material_slots, o3d_version)
 
         index += 1
 

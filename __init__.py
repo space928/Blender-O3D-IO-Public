@@ -24,7 +24,7 @@
 bl_info = {
     "name": "Import OMSI model.cfg files",
     "author": "Adam/Thomas Mathieson",
-    "version": (0, 1, 3),
+    "version": (0, 1, 5),
     "blender": (3, 1, 0),
     "location": "File > Import-Export",
     "description": "Import OMSI model.cfg files, their mesh's, UV's, and materials",
@@ -48,7 +48,8 @@ if not (bpy.app.version[0] < 3 and bpy.app.version[1] < 80):
 from bpy.props import (BoolProperty,
                        FloatProperty,
                        StringProperty,
-                       CollectionProperty
+                       CollectionProperty,
+                       IntProperty
                        )
 
 
@@ -136,6 +137,12 @@ class ExportModelCFG(bpy.types.Operator, ExportHelper):
         max=1000.0,
         default=1.0,
     )
+    o3d_version = IntProperty(
+        name="O3D Version",
+        min=1,
+        max=7,
+        default=7,
+    )
 
     def execute(self, context):
         context.window.cursor_set('WAIT')
@@ -147,7 +154,7 @@ class ExportModelCFG(bpy.types.Operator, ExportHelper):
             to_up='Y',
         ).to_4x4() @ Matrix.Scale(self.global_scale, 4)
 
-        io_o3d_export.do_export(self.filepath, context, global_matrix, self.use_selection)
+        io_o3d_export.do_export(self.filepath, context, global_matrix, self.use_selection, self.o3d_version)
 
         context.window.cursor_set('DEFAULT')
 

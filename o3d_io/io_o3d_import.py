@@ -110,7 +110,7 @@ def do_import(filepath, context):
         # Load mesh
         with open(path_to_file, "rb") as f:
             o3d_bytes = f.read()
-        log("Loading " + path_to_file + "...")
+        log("[{0:.2f}%] Loading {1}...".format((index+1)/len(files)*100, path_to_file))
         o3d = o3dconvert.import_o3d(o3d_bytes)
         verts = o3d[1]
         edges = []
@@ -118,7 +118,7 @@ def do_import(filepath, context):
         mesh = bpy.data.meshes.new(name=path_to_file[len(obj_root):-4])
 
         vertex_pos = [x[0] for x in verts]
-        normals = [x[1] for x in verts]
+        normals = [(x[1][0], x[1][2], x[1][1]) for x in verts]
         uvs = [(x[2][0], 1-x[2][1]) for x in verts]
         face_list = [x[0] for x in faces]
         matl_ids = [x[1] for x in faces]
@@ -165,7 +165,7 @@ def do_import(filepath, context):
             # For objects with LODs (ie: lod != default value of (0, 0)) ad them to a new group
             if i[1] != (0, 0):
                 group = bpy.data.groups.new("LOD_{0}_{1}".format(*i[1]))
-                bpy.ops.object.group_link(group)
+                group.objects.link(blender_obj)
         else:
             blender_obj = bpy.data.objects.new(path_to_file[len(obj_root):-4], mesh)
             blender_objs.append(blender_obj)
@@ -228,9 +228,15 @@ def do_import(filepath, context):
         light_object.location = (light_cfg["x_pos"], light_cfg["y_pos"], light_cfg["z_pos"])
 
     for ob in bpy.context.selected_objects:
-        ob.select_set(False)
+        if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
+            ob.select = True
+        else:
+            ob.select_set(True)
     for x in blender_objs:
-        x.select_set(True)
+        if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
+            x.select = True
+        else:
+            x.select_set(True)
 
     if len(files) == 0:
         log("WARNING: 0 models loaded! File:", filepath)
@@ -297,12 +303,14 @@ def generate_materials(cfg_materials, cfg_file_path, mat_counter, materials, mes
                         mat.alpha_texture.image = diff_tex.texture.image
 
                     mat.alpha = 0
+
                 if "transmap" in cfg_materials[key]:
                     # Material uses dedicated transparency texture
                     if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
                         diff_tex.use_map_alpha = False
-                    # Set the specular texture to the alpha channel of the diffuse texture
-                    mat.specular_texture.image = diff_tex.texture.image
+                    else:
+                        # Set the specular texture to the alpha channel of the diffuse texture
+                        mat.specular_texture.image = diff_tex.texture.image
                     # Load the new transmap
                     trans_map = load_texture_into_new_slot(cfg_file_path, cfg_materials[key]["transmap"][0], mat)
                     if trans_map:
@@ -314,12 +322,8 @@ def generate_materials(cfg_materials, cfg_file_path, mat_counter, materials, mes
                         else:
                             mat.alpha_texture.image = trans_map.texture.image
                     else:
-                        # if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
-                        #     diff_tex.use_map_alpha = True
-                        # else:
-                        #     mat.alpha_texture.image = diff_tex.texture.image
-
                         mat.alpha = 1
+
                 if "envmap" in cfg_materials[key]:
                     if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
                         mat.specular_intensity = cfg_materials[key]["envmap"][0] ** 2

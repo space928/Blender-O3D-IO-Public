@@ -12,8 +12,6 @@ from . import o3d_cfg_parser, o3dconvert
 if not (bpy.app.version[0] < 3 and bpy.app.version[1] < 80):
     from bpy_extras import node_shader_utils
 
-# from . import log
-
 
 def log(*args):
     print("[O3D_Export]", *args)
@@ -28,55 +26,33 @@ def export_mesh(filepath, context, mesh, materials):
 
         # Extract mesh data
         tris = []
-        verts = []
+        verts = []  # Array of (xp, yp, zp, xn, yn, zn, u, v)
         vert_map = {}
-        vert_id = 0
-        """
-        for face in mesh.faces:
+        vert_count = 0
+        for tri_loop in mesh.loop_triangles:
             tri = []
             tris.append(tri)
 
-            for loop in face.loops:
-                v = loop.vert
+            for tri_vert, loop in zip(tri_loop.vertices, tri_loop.loops):
+                vert = mesh.vertices[tri_vert]
+                v_co = vert.co[:]
+                v_nrm = vert.normal[:]
+                v_uv = uv_layer[loop].uv[:2]
 
-                uv = loop[uv_layer].uv[:2]
+                if (v_co, v_nrm) in vert_map:
+                    tri.append(vert_map[(v_co, v_nrm)])
+                else:
+                    vert_map[(v_co, v_nrm)] = vert_count
+                    verts.append(
+                        (-v_co[0], v_co[1], v_co[2],
+                         -v_nrm[0], v_nrm[2], v_nrm[1],
+                         v_uv[0], 1 - v_uv[1]))
+                    tri.append(vert_count)
+                    vert_count += 1
 
-                normal = v.normal
-                # normal = [-n for n in normal]
-                normal = (0, 1, 0)
+            tri.append(tri_loop.material_index)
 
-                # log(normal)
-
-                verts.append((-v.co[0], v.co[1], v.co[2],
-                              normal[0], normal[1], normal[2],
-                              uv[0], 1 - uv[1]))
-                vert_map[uv] = vert_id
-                tri.append(vert_id)
-                vert_id += 1
-
-            # Triangle material ID
-            tri.append(face.material_index)
-        """
-
-        face_index_pairs = [(face, index) for index, face in enumerate(mesh.polygons)]
-        no_key = no_val = None
-        normals_to_idx = {}
-        no_get = normals_to_idx.get
-        loops_to_normals = [0] * len(loops)
-        for f, f_index in face_index_pairs:
-            for l_idx in f.loop_indices:
-                no_key = veckey3d(loops[l_idx].normal)
-                no_val = no_get(no_key)
-                if no_val is None:
-                    no_val = normals_to_idx[no_key] = no_unique_count
-                    fw('vn %.4f %.4f %.4f\n' % no_key)
-                    no_unique_count += 1
-                loops_to_normals[l_idx] = no_val
-        del normals_to_idx, no_get, no_key, no_val
-
-        for v in mesh.vertices:
-            verts.append((*v.co, ))
-
+        # Construct embedded material array
         o3d_mats = []
         for mat in materials:
             # O3D mat structure:
@@ -92,7 +68,7 @@ def export_mesh(filepath, context, mesh, materials):
                 o3d_mat.extend(mat.emission_color)
                 o3d_mat.append(mat.specular_hardness)
                 # TODO: Blender 2.79 compat for texture export in embedded materials
-                # o3d_mat.append(os.path.basename(mat.base_color_texture.image.filepath))
+                o3d_mat.append("")
             else:
                 mat = node_shader_utils.PrincipledBSDFWrapper(mat.material, is_readonly=True)
                 o3d_mat.extend(mat.base_color)
@@ -106,7 +82,8 @@ def export_mesh(filepath, context, mesh, materials):
                               version=1,
                               encrypted=False, encryption_key=0xffffffff,
                               long_triangle_indices=False,
-                              alt_encryption_seed=True)
+                              alt_encryption_seed=True,
+                              invert_triangle_winding=True)
 
 
 def do_export(filepath, context, global_matrix, use_selection):

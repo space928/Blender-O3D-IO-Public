@@ -12,7 +12,7 @@ def log(*args):
 
 # Try to import o3d cryptography module (not available in public plugin release)
 try:
-    from o3d_crypto import init_rand, decrypt_vert, encrypt_vert
+    from .o3d_crypto import init_rand, decrypt_vert, encrypt_vert
 except (ModuleNotFoundError, ImportError):
     log("[WARNING] o3d_crypto.py could not be loaded! O3D encryption and decryption will not work correctly.")
 
@@ -99,7 +99,7 @@ def import_vertex_list(buff, offset, l_header, encrypted, alt_encryption_seed, e
         nv = import_vertex(buff, offset)
         if encrypted:
             nv[0], prev_seed, prev_vpos_seed = decrypt_vert(nv[0], encryption_header, alt_encryption_seed, prev_seed,
-                                                            prev_vpos_seed, header[1])
+                                                            prev_vpos_seed, header)
 
         verts.append(nv[0])
         offset = nv[1]
@@ -305,7 +305,7 @@ def export_vertex_list(write, vertex_list, encrypted, encryption_key, long_heade
         export_vertex(write, v)
 
 
-def export_triangle_list(write, triangle_list, long_triangle_indices, long_header):
+def export_triangle_list(write, triangle_list, long_triangle_indices, long_header, invert_triangle_winding=False):
     """
     Exports a list of triangles to an O3D file
     :param write: the file writer function
@@ -320,7 +320,7 @@ def export_triangle_list(write, triangle_list, long_triangle_indices, long_heade
         write("<H", len(triangle_list))
 
     for t in triangle_list:
-        export_triangle(write, t, long_triangle_indices, invert_normals=True)
+        export_triangle(write, t, long_triangle_indices, invert_triangle_winding)
 
 
 def export_material_list(write, material_list, long_header):
@@ -364,7 +364,8 @@ def export_transform(write, transform):
 
 
 def export_o3d(file, vertex_list, triangle_list, material_list, bone_list, transform, encrypted=False,
-               encryption_key=0xffffffff, version=7, long_triangle_indices=True, alt_encryption_seed=True):
+               encryption_key=0xffffffff, version=7, long_triangle_indices=True, alt_encryption_seed=True,
+               invert_triangle_winding=False):
     # Convenience function to pack and write bytes
     def write(fmt, *args):
         file.write(struct.pack(fmt, *args))
@@ -392,7 +393,7 @@ def export_o3d(file, vertex_list, triangle_list, material_list, bone_list, trans
 
     export_vertex_list(write, vertex_list, encrypted, encryption_key, long_header, alt_encryption_seed, version)
     # log("Wrote {0} vertices!".format(len(vertex_list)))
-    export_triangle_list(write, triangle_list, long_triangle_indices, long_header)
+    export_triangle_list(write, triangle_list, long_triangle_indices, long_header, invert_triangle_winding)
     # log("Wrote {0} triangles!".format(len(triangle_list)))
     export_material_list(write, material_list, long_header)
     # log("Wrote {0} materials!".format(len(material_list)))

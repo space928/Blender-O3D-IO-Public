@@ -148,6 +148,7 @@ def do_import(filepath, context):
             mesh.update()
 
         mesh.create_normals_split()
+        mesh.use_auto_smooth = True
         mesh.normals_split_custom_set_from_vertices(normals)
 
         for face in mesh.polygons:
@@ -196,7 +197,7 @@ def do_import(filepath, context):
         for ind, tri in enumerate(mesh.polygons):
             tri.material_index = matl_ids[ind]
 
-        mesh.polygons.foreach_set("use_smooth", [True] * len(mesh.polygons))
+        # mesh.polygons.foreach_set("use_smooth", [True] * len(mesh.polygons))
         mesh.update()
 
         bpy.ops.object.select_all(action='DESELECT')

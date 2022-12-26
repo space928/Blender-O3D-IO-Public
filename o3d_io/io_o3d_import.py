@@ -9,7 +9,8 @@ import bpy
 import os
 
 if not (bpy.app.version[0] < 3 and bpy.app.version[1] < 80):
-    from bpy_extras import node_shader_utils
+    # from bpy_extras import node_shader_utils
+    from . import o3d_node_shader_utils
 from . import o3dconvert
 
 # from . import log
@@ -189,41 +190,57 @@ def do_import(filepath, context):
 
         # Populate remaining properties
         key = (path_to_file[len(obj_root):], "null_mat")
-        for prop in cfg_materials[key].keys():
-            if prop[0] == "[" and prop[-1] == "]":
-                # This must be an unparsed property, therefore we add it to the custom properties of the mesh
-                bpy.data.meshes[mesh.name][prop] = cfg_materials[key][prop]
+        # We can only populate properties on objects defined in the cfg file
+        if key in cfg_materials:
+            for prop in cfg_materials[key].keys():
+                if prop[0] == "[" and prop[-1] == "]":
+                    # This must be an unparsed property, therefore we add it to the custom properties of the mesh
+                    bpy.data.meshes[mesh.name][prop] = cfg_materials[key][prop]
 
         for ind, tri in enumerate(mesh.polygons):
             tri.material_index = matl_ids[ind]
 
-        # mesh.polygons.foreach_set("use_smooth", [True] * len(mesh.polygons))
         mesh.update()
+
+        # Generate bones
+        for bone in o3d[4]:
+            # TODO: Create Blender bones from o3d bones
+            pass
 
         bpy.ops.object.select_all(action='DESELECT')
         if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
             blender_obj.select = True
         else:
             blender_obj.select_set(True)
-        # bpy.ops.object.shade_smooth()
-        # bpy.ops.object.mode_set(mode='EDIT')
-        # bpy.ops.object.mode_set(mode='OBJECT')
         bpy.ops.object.select_all(action='DESELECT')
 
     # Create lights
     for light in lights:
         light_cfg = cfg_materials[light]["light"]
 
-        light_data = bpy.data.lights.new(name=light[0], type='POINT')
-        light_data.energy = light_cfg["range"] * 0.4
-        light_data.color = (light_cfg["red"], light_cfg["green"], light_cfg["blue"])
-        light_data.shadow_soft_size = 0.02
-        light_data["variable"] = light_cfg["variable"]
+        if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
+            light_data = bpy.data.lamps.new(name=light[0], type='POINT')
+            light_data.distance = light_cfg["range"]
+            light_data.energy = 0.01
+            light_data.color = (light_cfg["red"], light_cfg["green"], light_cfg["blue"])
+            light_data["variable"] = light_cfg["variable"]
 
-        light_object = bpy.data.objects.new(name=light[0], object_data=light_data)
+            light_object = bpy.data.objects.new(name=light[0], object_data=light_data)
 
-        bpy.context.collection.objects.link(light_object)
+            scene = bpy.context.scene
+            scene.objects.link(light_object)
+        else:
+            light_data = bpy.data.lights.new(name=light[0], type='POINT')
+            light_data.energy = light_cfg["range"] * 0.4
+            light_data.color = (light_cfg["red"], light_cfg["green"], light_cfg["blue"])
+            light_data.shadow_soft_size = 0.02
+            light_data["variable"] = light_cfg["variable"]
 
+            light_object = bpy.data.objects.new(name=light[0], object_data=light_data)
+
+            bpy.context.collection.objects.link(light_object)
+
+        blender_objs.append(light_object)
         # Change light position
         light_object.location = (light_cfg["x_pos"], light_cfg["y_pos"], light_cfg["z_pos"])
 
@@ -273,7 +290,7 @@ def generate_materials(cfg_materials, cfg_file_path, mat_counter, materials, mes
             mat.specular_color = (sepcR, sepcG, sepcB)
         else:
             mat_blender.use_nodes = True
-            mat = node_shader_utils.PrincipledBSDFWrapper(mat_blender, is_readonly=False)
+            mat = o3d_node_shader_utils.PrincipledBSDFWrapper(mat_blender, is_readonly=False)
             mat.base_color = (diffuseR, diffuseG, diffuseB)
             mat.specular = sepcR * 0
             mat.roughness = 1 - specH
@@ -352,8 +369,7 @@ def generate_materials(cfg_materials, cfg_file_path, mat_counter, materials, mes
                     else:
                         bump = load_texture_into_new_slot(cfg_file_path, cfg_materials[key]["bumpmap"][0], mat)
                         if bump is not None:
-                            # TODO: Fix this:
-                            # mat.normalmap_texture.is_bump_map = True
+                            mat.normalmap_texture.is_bump_map = True
                             mat.normalmap_texture.image = bump.texture.image
                             mat.normalmap_strength = cfg_materials[key]["bumpmap_strength"][0]
 

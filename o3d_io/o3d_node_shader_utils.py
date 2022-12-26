@@ -1,5 +1,5 @@
 # ==============================================================================
-#  Copyright (c) 2022 Thomas Mathieson.
+#  Copyright (c) 2022 Thomas Mathieson. 
 # ==============================================================================
 
 # SPDX-License-Identifier: GPL-2.0-or-later
@@ -9,7 +9,7 @@
 from mathutils import Color, Vector
 
 __all__ = (
-    "O3DPrincipledBSDFWrapper",
+    "PrincipledBSDFWrapper",
 )
 
 
@@ -137,7 +137,7 @@ class ShaderWrapper():
     node_texcoords = property(node_texcoords_get)
 
 
-class O3DPrincipledBSDFWrapper(ShaderWrapper):
+class PrincipledBSDFWrapper(ShaderWrapper):
     """
     Hard coded shader setup, based in Principled BSDF.
     Should cover most common cases on import, and gives a basic nodal shaders support for export.
@@ -160,11 +160,10 @@ class O3DPrincipledBSDFWrapper(ShaderWrapper):
     NODES_LIST = ShaderWrapper.NODES_LIST + NODES_LIST
 
     def __init__(self, material, is_readonly=True, use_nodes=True):
-        print(self)
-        super(O3DPrincipledBSDFWrapper, self).__init__(material, is_readonly, use_nodes)
+        super(PrincipledBSDFWrapper, self).__init__(material, is_readonly, use_nodes)
 
     def update(self):
-        super(O3DPrincipledBSDFWrapper, self).update()
+        super(PrincipledBSDFWrapper, self).update()
 
         if not self.use_nodes:
             return
@@ -700,12 +699,9 @@ class ShaderImageTextureWrapper():
                 image = image.copy()
             image.colorspace_settings.name = self.colorspace_name
         if self.use_alpha:
-            # Try to be smart, and only use image's alpha output if image actually has alpha data.
+            # Always use the texture's alpha if asked, even if it doesn't have one
             tree = self.owner_shader.material.node_tree
-            if image.channels < 4 or image.depth in {24, 8}:
-                tree.links.new(self.node_image.outputs["Color"], self.socket_dst)
-            else:
-                tree.links.new(self.node_image.outputs["Alpha"], self.socket_dst)
+            tree.links.new(self.node_image.outputs["Alpha"], self.socket_dst)
         if self.is_bump_map:
             tree = self.owner_shader.material.node_tree
 

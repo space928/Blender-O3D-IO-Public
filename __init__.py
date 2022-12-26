@@ -22,15 +22,18 @@
 # <pep8 compliant>
 
 bl_info = {
-    "name": "Import OMSI model.cfg files",
+    "name": "Import OMSI cfg/sco/o3d files",
     "author": "Adam/Thomas Mathieson",
-    "version": (0, 1, 5),
+    "version": (0, 1, 6),
     "blender": (3, 1, 0),
     "location": "File > Import-Export",
-    "description": "Import OMSI model.cfg files, their mesh's, UV's, and materials",
-    "wiki_url": "",
-    "tracker_url": "",
-    "category": "Import-Export"}
+    "description": "Import OMSI model .cfg,.sco, and .o3d files along with their meshes, UVs, and materials",
+    "wiki_url": "https://github.com/space928/Blender-O3D-IO-Public",
+    "doc_url": "https://github.com/space928/Blender-O3D-IO-Public",
+    "tracker_url": "https://github.com/space928/Blender-O3D-IO-Public/issues/new?assignees=&labels=bug%2C+needs"
+                   "+triage&template=bug_report.md&title=",
+    "category": "Import-Export"
+}
 
 from .o3d_io import io_o3d_import, io_o3d_export
 import bpy

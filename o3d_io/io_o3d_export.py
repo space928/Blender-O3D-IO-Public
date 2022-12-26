@@ -82,7 +82,15 @@ def export_mesh(filepath, context, mesh, materials, o3d_version):
                 else:
                     o3d_mat.append("")
 
-        o3dconvert.export_o3d(f, verts, tris, o3d_mats, [], None,
+        # Construct bones
+        bones = []
+        for m_bone in mesh.bones:
+            bone = (m_bone.name, [])
+            bones.append(bone)
+            for weight in m_bone.weights:
+                bone[1].append((weight.vertex, weight.weight))
+
+        o3dconvert.export_o3d(f, verts, tris, o3d_mats, bones, None,
                               version=o3d_version,
                               encrypted=False, encryption_key=0xffffffff,
                               long_triangle_indices=False,

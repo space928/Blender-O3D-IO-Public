@@ -68,17 +68,18 @@ def import_material(buff, offset):
 
 
 # Takes an o3d bone struct and returns ((name, weights), newOffset)
-# TODO: Sceneryobjects\Ruede\model\trafohaus.o3d
-def import_bone(buff, offset):
-    h = struct.unpack_from("<B", buff, offset=offset)  # Name length probs
-    b_name = struct.unpack_from("<{0}p".format(str(h[0] + 1)), buff, offset=offset)[0].decode("cp1252")
+def import_bone(buff, offset, long_triangle_indices):
+    h = struct.unpack_from("<B", buff, offset=offset)  # Name length
+    b_name = struct.unpack_from("<{0}p".format(str(h[0] + 1)), buff, offset=offset)[0].decode("cp1252",
+                                                                                              errors="backslashreplace")
     offset += h[0] + 1
+
     n_weights = struct.unpack_from("<H", buff, offset=offset)
     offset += 2
     weights = []
     for w in range(n_weights[0]):
-        weights.append(struct.unpack_from("<Hf", buff, offset=offset))
-        offset += 2 * 2
+        weights.append(struct.unpack_from("<If" if long_triangle_indices else "<Hf", buff, offset=offset))
+        offset += 8 if long_triangle_indices else 6
 
     return (b_name, weights), offset
 
@@ -141,7 +142,7 @@ def import_material_list(buff, offset, l_header):
 
 
 # Imports a list of o3d bones and returns (bones, newOffset)
-def import_bone_list(buff, offset, l_header):
+def import_bone_list(buff, offset, l_header, long_triangle_indices):
     if l_header:
         header = struct.unpack_from("<I", buff, offset=offset)[0]
         offset += 4
@@ -151,7 +152,7 @@ def import_bone_list(buff, offset, l_header):
 
     bones = []
     for b in range(header):
-        nb = import_bone(buff, offset)
+        nb = import_bone(buff, offset, long_triangle_indices)
         bones.append(nb[0])
         offset = nb[1]
 
@@ -212,7 +213,7 @@ def import_o3d(packed_bytes):
             material_list, off = import_material_list(packed_bytes, off, l_header)
             # log("Loaded {0} materials!".format(len(material_list)))
         elif section == 0x54:
-            bone_list, off = import_bone_list(packed_bytes, off, l_header)
+            bone_list, off = import_bone_list(packed_bytes, off, l_header, bonus_header[0] & 1 == 1)
             # log("Loaded {0} bones!".format(len(bone_list)))
         elif section == 0x79:
             transform, off = import_transform(packed_bytes, off)
@@ -264,19 +265,13 @@ def export_material(write, material):
     write("<{0}p".format(len(material[-1]) + 1), material[-1].encode("cp1252"))
 
 
-def export_bone(buff, offset):
-    pass
-    """h = struct.unpack_from("<B")  # Name length probs
-    b_name = struct.unpack_from("<{0}p".format(str(h[0] + 1)), buff, offset=offset)[0].decode("cp1252")
-    offset += h[0] + 1
-    n_weights = struct.unpack_from("<H", buff, offset=offset)
-    offset += 2
-    weights = []
-    for w in range(n_weights[0]):
-        weights.append(struct.unpack_from("<Hf", buff, offset=offset))
-        offset += 2 * 2
+def export_bone(write, bone, long_triangle_indices):
+    write("<B", len(bone[0]))
+    write("<{0}p".format(len(bone[0])), bone[0])
 
-    return (b_name, weights), offset"""
+    write("<H", len(bone[1]))
+    for w in bone[1]:
+        write("<If" if long_triangle_indices else "<Hf", *w)
 
 
 def export_vertex_list(write, vertex_list, encrypted, encryption_key, long_header, alt_encryption_seed, version):
@@ -338,7 +333,7 @@ def export_material_list(write, material_list, long_header):
         export_material(write, m)
 
 
-def export_bone_list(write, bone_list, long_header):
+def export_bone_list(write, bone_list, long_header, long_triangle_indices):
     if len(bone_list) == 0:
         return
 
@@ -348,8 +343,8 @@ def export_bone_list(write, bone_list, long_header):
     else:
         write("<H", 0)
 
-    # TODO: Implement bone list exporting
-    log("Exporting bones is not currently supported! Skipping section...")
+    for bone in bone_list:
+        export_bone(write, bone, long_triangle_indices)
 
 
 def export_transform(write, transform):

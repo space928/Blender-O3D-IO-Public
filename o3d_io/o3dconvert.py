@@ -267,7 +267,7 @@ def export_material(write, material):
 
 def export_bone(write, bone, long_triangle_indices):
     write("<B", len(bone[0]))
-    write("<{0}p".format(len(bone[0])), bone[0])
+    write("<{0}p".format(len(bone[0])), bone[0].encode("cp1252"))
 
     write("<H", len(bone[1]))
     for w in bone[1]:
@@ -392,6 +392,6 @@ def export_o3d(file, vertex_list, triangle_list, material_list, bone_list, trans
     # log("Wrote {0} triangles!".format(len(triangle_list)))
     export_material_list(write, material_list, long_header)
     # log("Wrote {0} materials!".format(len(material_list)))
-    export_bone_list(write, bone_list, long_header)
+    export_bone_list(write, bone_list, long_header, long_triangle_indices)
     # log("Wrote {0} bones!".format(len(bone_list)))
     export_transform(write, transform)

@@ -204,8 +204,9 @@ def do_import(filepath, context):
 
         # Generate bones
         for bone in o3d[4]:
-            # TODO: Create Blender bones from o3d bones
-            pass
+            blender_obj.vertex_groups.new(name=bone[0])
+            for vert in bone[1]:
+                blender_obj.vertex_groups[bone[0]].add([vert[0]], vert[1], "REPLACE")
 
         bpy.ops.object.select_all(action='DESELECT')
         if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:

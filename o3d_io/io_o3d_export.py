@@ -17,7 +17,7 @@ def log(*args):
     print("[O3D_Export]", *args)
 
 
-def export_mesh(filepath, context, mesh, materials, o3d_version):
+def export_mesh(filepath, context, blender_obj, mesh, materials, o3d_version):
     # Create o3d file
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
     with open(filepath, "wb") as f:
@@ -30,6 +30,8 @@ def export_mesh(filepath, context, mesh, materials, o3d_version):
         verts = []  # Array of (xp, yp, zp, xn, yn, zn, u, v)
         vert_map = {}
         vert_count = 0
+
+        mesh.calc_loop_triangles()
         for tri_loop in mesh.loop_triangles:
             tri = []
             tris.append(tri)
@@ -84,11 +86,14 @@ def export_mesh(filepath, context, mesh, materials, o3d_version):
 
         # Construct bones
         bones = []
-        for m_bone in mesh.bones:
-            bone = (m_bone.name, [])
+        for v_group in blender_obj.vertex_groups:
+            bone = (v_group.name, [])
             bones.append(bone)
-            for weight in m_bone.weights:
-                bone[1].append((weight.vertex, weight.weight))
+            for index in range(len(verts)):
+                try:
+                    bone[1].append((index, v_group.weight(index)))
+                except Exception as e:
+                    pass
 
         o3dconvert.export_o3d(f, verts, tris, o3d_mats, bones, None,
                               version=o3d_version,
@@ -165,7 +170,7 @@ def do_export(filepath, context, global_matrix, use_selection, o3d_version):
                 path = filepath
             else:
                 path = os.path.join(obj_root, os.path.basename(filepath)[:-4] + "-" + ob.name + ".o3d")
-        export_mesh(path, context, me, ob_eval.material_slots, o3d_version)
+        export_mesh(path, context, ob_eval, me, ob_eval.material_slots, o3d_version)
 
         index += 1
 

@@ -16,52 +16,11 @@ from . import o3dconvert
 # from . import log
 from mathutils import Matrix
 from .o3d_cfg_parser import read_cfg
+from .blender_texture_io import load_texture_into_new_slot
 
 
 def log(*args):
     print("[O3D_Import]", *args)
-
-
-class TextureSlotWrapper:
-    """
-    Wrapper around old texture slot type
-    """
-
-    class TextureWrapper:
-        """
-        Wrapper around old texture type
-        """
-
-        def __init__(self, image):
-            self.image = image
-
-    def __init__(self, image):
-        self.texture = TextureSlotWrapper.TextureWrapper(image)
-
-
-def load_texture_into_new_slot(base_file_path, texture_path, mat):
-    if base_file_path[-3:] == "sco":
-        tex_file = os.path.dirname(base_file_path) + "\\texture\\" + texture_path.lower()
-    else:
-        tex_file = os.path.dirname(base_file_path) + "\\..\\texture\\" + texture_path.lower()
-    pre, ext = os.path.splitext(tex_file)
-    if os.path.isfile(pre + ".dds"):
-        tex_file = pre + ".dds"
-    if os.path.isfile(tex_file):
-        # TODO: Alpha_8_UNORM DDS files are not supported by Blender
-        image = bpy.data.images.load(tex_file,
-                                     check_existing=True)
-        if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
-            tex = bpy.data.textures.new(texture_path, type="IMAGE")
-            tex.type_recast()
-            tex.image = image
-            texs = mat.texture_slots.add()
-            texs.texture = tex
-            return texs
-        else:
-            # Wrapper around old texture type
-            return TextureSlotWrapper(image)
-    return None
 
 
 dbg_unrecognised_commands = set()
@@ -76,7 +35,7 @@ def do_import(filepath, context):
     """
     obj_root = os.path.dirname(filepath)
     start_time = time.time()
-    if filepath[-3:] == "o3d":
+    if filepath[-3:] == "o3d" or filepath[-3:] == "rdy":
         files = [(filepath, (0, 0))]
         cfg_materials = {}
         lights = []
@@ -99,19 +58,22 @@ def do_import(filepath, context):
                 x_file_path = {"name": os.path.basename(path_to_file)}
                 # Clunky solution to work out what has been imported because the x importer doesn't set selection
                 old_objs = set(context.scene.objects)
-                bpy.ops.import_scene.x(filepath=path_to_file, files=[x_file_path], axis_forward='Y', axis_up='Z',
-                                       use_split_objects=False, use_split_groups=False)
+                # For now the x file importer doesn't handle omsi x files very well, materials aren't imported correctly
+                bpy.ops.import_scene.x(filepath=path_to_file, files=[x_file_path], axis_forward='Z', axis_up='Y',
+                                       use_split_objects=False, use_split_groups=False, parented=False,
+                                       quickmode=True)
                 # mat_counter = generate_materials(cfg_materials, filepath, mat_counter, materials, mesh, obj_root,
                 #                                 path_to_file)
                 blender_objs.extend(set(context.scene.objects) - old_objs)
                 continue
-            except AttributeError:
-                log("WARNING: {0} was not imported! No X importer found!".format(path_to_file))
+            except:
+                log("WARNING: {0} was not imported! A compatible X importer was not found! Please use: "
+                    "https://github.com/Poikilos/io_import_x".format(path_to_file))
 
         # Load mesh
         with open(path_to_file, "rb") as f:
             o3d_bytes = f.read()
-        log("[{0:.2f}%] Loading {1}...".format((index+1)/len(files)*100, path_to_file))
+        log("[{0:.2f}%] Loading {1}...".format((index + 1) / len(files) * 100, path_to_file))
         o3d = o3dconvert.import_o3d(o3d_bytes)
         verts = o3d[1]
         edges = []
@@ -120,7 +82,7 @@ def do_import(filepath, context):
 
         vertex_pos = [x[0] for x in verts]
         normals = [(x[1][0], x[1][2], x[1][1]) for x in verts]
-        uvs = [(x[2][0], 1-x[2][1]) for x in verts]
+        uvs = [(x[2][0], 1 - x[2][1]) for x in verts]
         face_list = [x[0] for x in faces]
         matl_ids = [x[1] for x in faces]
         materials = o3d[3]
@@ -141,16 +103,15 @@ def do_import(filepath, context):
                 vert.co = mx * vert.co
             else:
                 vert.co = mx @ vert.co
-            # vert.normal = normals[n]
+
+        mesh.create_normals_split()
+        mesh.polygons.foreach_set("use_smooth", [True] * len(mesh.polygons))
+        mesh.normals_split_custom_set_from_vertices(normals)
 
         if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
             mesh.update(calc_tessface=True)
         else:
             mesh.update()
-
-        mesh.create_normals_split()
-        mesh.use_auto_smooth = True
-        mesh.normals_split_custom_set_from_vertices(normals)
 
         for face in mesh.polygons:
             for vert_idx, loop_idx in zip(face.vertices, face.loop_indices):
@@ -352,7 +313,8 @@ def generate_materials(cfg_materials, cfg_file_path, mat_counter, materials, mes
 
                     if "envmap_mask" in cfg_materials[key]:
                         # Load the new transmap
-                        envmap_mask = load_texture_into_new_slot(cfg_file_path, cfg_materials[key]["envmap_mask"][0], mat)
+                        envmap_mask = load_texture_into_new_slot(cfg_file_path, cfg_materials[key]["envmap_mask"][0],
+                                                                 mat)
                         if envmap_mask:
                             if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
                                 # TODO: Blender 2.79 compat for envmap masks
@@ -387,14 +349,14 @@ def generate_materials(cfg_materials, cfg_file_path, mat_counter, materials, mes
                     allcolor = cfg_materials[key]["allcolor"]
                     mat.base_color = [x[0] for x in allcolor[0:3]]
                     mat.alpha = allcolor[3][0]
-                    emission = [allcolor[4][0]*0.1 + allcolor[10][0],
-                                allcolor[5][0]*0.1 + allcolor[11][0],
-                                allcolor[6][0]*0.1 + allcolor[12][0]]
+                    emission = [allcolor[4][0] * 0.1 + allcolor[10][0],
+                                allcolor[5][0] * 0.1 + allcolor[11][0],
+                                allcolor[6][0] * 0.1 + allcolor[12][0]]
                     mat.emission_color = emission
                     # The allcolor emission values always seem to look bad, for now it's just disabled
                     mat.emission_strength = 0
-                    mat.specular = sum([x[0] for x in allcolor[7:10]])/3
-                    mat.roughness = 1/max(allcolor[13][0]/10, 0.1)
+                    mat.specular = sum([x[0] for x in allcolor[7:10]]) / 3
+                    mat.roughness = 1 / max(allcolor[13][0] / 10, 0.1)
 
                 if "nightmap" in cfg_materials[key]:
                     # A nightmap is an emission texture which is automatically toggled at night

@@ -37,11 +37,11 @@ def read_cfg(filepath):
     # log("Loading " + filepath)
     try:
         with open(filepath, 'r', encoding="1252") as f:
-            lines = [l.strip() for l in f.readlines()]
+            lines = [l.rstrip() for l in f.readlines()]
     except:
         # Try a different encoding
         with open(filepath, 'r', encoding="utf-8") as f:
-            lines = [l.strip() for l in f.readlines()]
+            lines = [l.rstrip() for l in f.readlines()]
 
     cfg_data = {}
     files = []
@@ -52,6 +52,7 @@ def read_cfg(filepath):
     current_viewpoint = (0, 0)
     current_mat = "null_mat"
     current_mesh = None
+    is_surface_sco = False
     param_ind = -1
     light_ind = 0
     for i, line in enumerate(lines):
@@ -60,6 +61,9 @@ def read_cfg(filepath):
             param_ind = -1
         else:
             param_ind += 1
+
+        if current_command == "[surface]":
+            is_surface_sco = True
 
         if current_command == "[LOD]":
             if param_ind == 0:
@@ -87,6 +91,7 @@ def read_cfg(filepath):
                 cfg_data[(current_mesh, current_mat)] = {}
                 cfg_data[(current_mesh, current_mat)]["LOD"] = current_lod
                 cfg_data[(current_mesh, current_mat)]["viewpoint"] = current_viewpoint
+                cfg_data[(current_mesh, current_mat)]["[surface]"] = is_surface_sco
 
         elif current_command == "[interiorlight]":
             if param_ind == -1:

@@ -22,12 +22,12 @@
 # <pep8 compliant>
 
 bl_info = {
-    "name": "Import OMSI cfg/sco/o3d files",
+    "name": "Import OMSI map/cfg/sco/o3d files",
     "author": "Adam/Thomas Mathieson",
-    "version": (0, 1, 6),
+    "version": (0, 2, 2),
     "blender": (3, 1, 0),
     "location": "File > Import-Export",
-    "description": "Import OMSI model .cfg,.sco, and .o3d files along with their meshes, UVs, and materials",
+    "description": "Import OMSI model .map, .cfg, .sco, and .o3d files along with their meshes, UVs, and materials",
     "wiki_url": "https://github.com/space928/Blender-O3D-IO-Public",
     "doc_url": "https://github.com/space928/Blender-O3D-IO-Public",
     "tracker_url": "https://github.com/space928/Blender-O3D-IO-Public/issues/new?assignees=&labels=bug%2C+needs"
@@ -35,7 +35,7 @@ bl_info = {
     "category": "Import-Export"
 }
 
-from .o3d_io import io_o3d_import, io_o3d_export
+from .o3d_io import io_o3d_import, io_o3d_export, io_omsi_tile
 import bpy
 from mathutils import Matrix
 
@@ -95,7 +95,7 @@ class ImportModelCFG(bpy.types.Operator, ImportHelper):
     filename_ext = ".o3d"
 
     filter_glob = StringProperty(
-        default="*.cfg;*.sco;*.o3d",
+        default="*.cfg;*.sco;*.o3d;*.rdy",
         options={'HIDDEN'},
     )
 
@@ -173,7 +173,66 @@ class ExportModelCFG(bpy.types.Operator, ExportHelper):
     #    # col.prop(operator, "use_ascii")
 
 
-# Only needed if you want to add into a dynamic menu
+class ImportOMSITile(bpy.types.Operator, ImportHelper):
+    """Imports an OMSI map file from a .map/.cfg file"""
+    bl_idname = "import_scene.omsi_tile"
+    bl_label = "Import OMSI tile.map/global.cfg"
+    bl_options = {'PRESET', 'UNDO'}
+
+    # ImportHelper mixin class uses this
+    filename_ext = ".map"
+
+    filter_glob = StringProperty(
+        default="*.map;*.cfg",
+        options={'HIDDEN'},
+    )
+
+    import_scos = BoolProperty(
+        name="Import SCOs",
+        description="Import the SCO files",
+        default=False
+    )
+
+    import_splines = BoolProperty(
+        name="Import Splines",
+        description="Import the map's splines",
+        default=False
+    )
+
+    spline_tess_dist = FloatProperty(
+        name="Spline Tesselation Precision",
+        description="The minimum distance between spline segments",
+        min=0.1,
+        max=1000.0,
+        default=6.0,
+    )
+
+    spline_curve_sag = FloatProperty(
+        name="Spline Tesselation Curve Precision",
+        description="The minimum sag distance between the curve and the tessellated segment. Note that this is used in "
+                    "combination with the above setting, whichever is lower is used by the tessellator.",
+        min=0.0005,
+        max=1.0,
+        default=0.005,
+    )
+
+    # Selected files
+    files = CollectionProperty(type=bpy.types.PropertyGroup)
+
+    def execute(self, context):
+        """
+        Imports the selected map file
+        :param context: blender context
+        :return: success message
+        """
+        context.window.cursor_set('WAIT')
+        io_omsi_tile.do_import(context, self.filepath, self.import_scos, self.import_splines, self.spline_tess_dist,
+                               self.spline_curve_sag)
+        context.window.cursor_set('DEFAULT')
+
+        return {'FINISHED'}
+
+
 def menu_func_import(self, context):
     self.layout.operator(ImportModelCFG.bl_idname, text="OMSI Model Config (*.cfg, *.sco, *.o3d)")
 
@@ -182,9 +241,14 @@ def menu_func_export(self, context):
     self.layout.operator(ExportModelCFG.bl_idname, text="OMSI Model Config (*.cfg, *.sco, *.o3d)")
 
 
+def menu_func_import_tile(self, context):
+    self.layout.operator(ImportOMSITile.bl_idname, text="OMSI Map Tile (*.map)")
+
+
 classes = [
     ImportModelCFG,
-    ExportModelCFG
+    ExportModelCFG,
+    ImportOMSITile
 ]
 
 
@@ -197,9 +261,11 @@ def register():
     if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
         bpy.types.INFO_MT_file_import.append(menu_func_import)
         bpy.types.INFO_MT_file_export.append(menu_func_export)
+        bpy.types.INFO_MT_file_import.append(menu_func_import_tile)
     else:
         bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
         bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
+        bpy.types.TOPBAR_MT_file_import.append(menu_func_import_tile)
 
 
 def unregister():
@@ -210,16 +276,12 @@ def unregister():
     if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
         bpy.types.INFO_MT_file_import.remove(menu_func_import)
         bpy.types.INFO_MT_file_export.remove(menu_func_export)
+        bpy.types.INFO_MT_file_import.remove(menu_func_import_tile)
     else:
         bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
         bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
+        bpy.types.TOPBAR_MT_file_import.remove(menu_func_import_tile)
 
 
 if __name__ == "__main__":
     register()
-
-    # test call
-    # importer = ImportModelCFG(None)
-    # importer.filepath = "D:/Program Files/OMSI 2/Vehicles/GPM_C2/Model/passengercabin_C2_V3.cfg"
-    # importer.execute(None)
-    # bpy.ops.import_scene.omsi_model_cfg(filepath="D:/Program Files/OMSI 2/Vehicles/GPM_C2/Model/passengercabin_C2_V3.cfg")

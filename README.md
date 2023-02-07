@@ -22,7 +22,9 @@ Currently, importing models is well-supported, exporting is currently work in pr
        - `[matl_alpha]`
        - `[matl_transmap]`
        - `[matl_envmap]`
+       - ...
     - Imports all referenced models (o3d files only) and textures in the CFG/SCO as separate objects
+    - Imports `.x` if a compatible importer is installed (https://github.com/Poikilos/io_import_x)
 
 ### Exporter
 In its current state, the exporter doesn't work.  
@@ -32,7 +34,7 @@ In its current state, the exporter doesn't work.
     - Encryption [Coming soon]
     - Long triangle indices
     - Alternative encryption seed [Coming soon]
-    - Embedded materials [Coming soon]
-    - Bones [Coming soon]
+    - Embedded materials
+    - Bones
     - UV coordinates
  - Supports merging into CFG/SCO files for roundtrip model editing

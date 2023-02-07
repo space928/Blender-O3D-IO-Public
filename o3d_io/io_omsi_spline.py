@@ -32,26 +32,30 @@ class Spline:
                  mirror):
         self.sli_path = sli_path
         self.id = spline_id
-        self.nextID = next_id
-        self.prevID = prev_id
+        self.next_id = next_id
+        self.prev_id = prev_id
         self.pos = pos
         self.rot = rot
         self.length = length
         self.radius = radius
-        self.startGrad = start_grad
-        self.endGrad = end_grad
-        self.cantStart = cant_start
-        self.cantEnd = cant_end
-        self.skewStart = skew_start
-        self.skewEnd = skew_end
+        self.start_grad = start_grad
+        self.end_grad = end_grad
+        self.cant_start = cant_start
+        self.cant_end = cant_end
+        self.skew_start = skew_start
+        self.skew_end = skew_end
         self.mirror = mirror
 
     def __str__(self) -> str:
-        return f"Spline {self.id}: sli_path = {self.sli_path}; id = {self.id}; nextID = {self.nextID}; " \
-               f"prevID = {self.prevID}; pos = {self.pos}; rot = {self.rot}; length = {self.length}; " \
-               f"radius = {self.radius}; startGrad = {self.startGrad}; endGrad = {self.endGrad}; " \
-               f"cantStart = {self.cantStart}; cantEnd = {self.cantEnd}; skewStart = {self.skewStart}; " \
-               f"skewEnd = {self.skewEnd}; mirror = {self.mirror}. "
+        return "Spline {0}: sli_path = {1}; id = {2}; next_id = {3}; " \
+               "prev_id = {4}; pos = {5}; rot = {6}; length = {7}; " \
+               "radius = {8}; start_grad = {9}; end_grad = {10}; " \
+               "cant_start = {11}; cant_end = {12}; skew_start = {13}; " \
+               "skew_end = {14}; mirror = {15}. ".format(self.id, self.sli_path, self.id, self.next_id,
+                                                         self.prev_id, self.pos, self.rot, self.length,
+                                                         self.radius, self.start_grad, self.end_grad,
+                                                         self.cant_start, self.cant_end, self.skew_start,
+                                                         self.skew_end, self.mirror)
 
     def generate_mesh(self, sli_cache, spline_tess_dist, spline_curve_sag):
         sli = sli_cache[self.sli_path]
@@ -91,11 +95,11 @@ class Spline:
             pos_offset = mathutils.Vector((0, dx if self.radius <= 0 else 0, 0))
             curr_len = 0
             curr_pos = np.array((0.0, 0.0, 0.0))
-            curr_rot = [0.09 * self.startGrad, -0.09 * self.cantStart, 0]
+            curr_rot = [0.09 * self.start_grad, -0.09 * self.cant_start, 0]
             curve_rot_ang = 0
             m_verts = []
             for i in range(n_segments + 1):
-                skew = (self.skewStart * (1 - curr_len / self.length) + self.skewEnd * curr_len / self.length)
+                skew = (self.skew_start * (1 - curr_len / self.length) + self.skew_end * curr_len / self.length)
                 line = [np.array([profile_part[p][0], skew * profile_part[p][0], profile_part[p][1]])
                         for p in range(profile_len)]
                 # Transform the slice
@@ -138,9 +142,9 @@ class Spline:
                 #     curr_rot[2] += 180 / math.pi * dx / self.radius
 
                 curr_rot[0] = 0.09 * (
-                        self.startGrad * (1 - curr_len / self.length) + self.endGrad * curr_len / self.length)
+                        self.start_grad * (1 - curr_len / self.length) + self.end_grad * curr_len / self.length)
                 curr_rot[1] = -0.09 * (
-                        self.cantStart * (1 - curr_len / self.length) + self.cantEnd * curr_len / self.length)
+                        self.cant_start * (1 - curr_len / self.length) + self.cant_end * curr_len / self.length)
 
                 if self.radius > 0:
                     curr_len += dr * self.radius * rot_dir
@@ -239,7 +243,7 @@ def load_spline_defs(map_file):
             float(lines[16]),  # skew_end
             lines[18] == "mirror"  # mirror
         ))
-    log(f"Loaded {len(spline_defs)} splines!")
+    log("Loaded {0} splines!".format(len(spline_defs)))
     return spline_defs
 
 

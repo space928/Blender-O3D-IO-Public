@@ -124,7 +124,10 @@ def do_export(filepath, context, global_matrix, use_selection, o3d_version):
     else:
         obs = context.scene.objects
 
-    deps_graph = context.evaluated_depsgraph_get()
+    if bpy.app.version < (2, 80):
+        deps_graph = None
+    else:
+        deps_graph = context.evaluated_depsgraph_get()
 
     bpy.context.window_manager.progress_begin(0, len(obs))
 
@@ -139,12 +142,20 @@ def do_export(filepath, context, global_matrix, use_selection, o3d_version):
     for ob in obs:
         log("Exporting " + ob.name + "...")
         bpy.context.window_manager.progress_update(index)
-        ob_eval = ob.evaluated_get(deps_graph)
+        if bpy.app.version < (2, 80):
+            ob_eval = ob
 
-        try:
-            me = ob_eval.to_mesh()
-        except RuntimeError:
-            continue
+            try:
+                me = ob_eval.to_mesh(context.scene, True, 'PREVIEW')
+            except RuntimeError:
+                continue
+        else:
+            ob_eval = ob.evaluated_get(deps_graph)
+
+            try:
+                me = ob_eval.to_mesh()
+            except RuntimeError:
+                continue
 
         me.transform(ob.matrix_world)
         bm = bmesh.new()

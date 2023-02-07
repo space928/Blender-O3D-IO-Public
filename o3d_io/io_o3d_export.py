@@ -4,10 +4,13 @@
 
 import time
 
+import numpy as np
+
 import bpy
 import os
 import bmesh
 from . import o3d_cfg_parser, o3dconvert
+from mathutils import Vector
 
 if not (bpy.app.version[0] < 3 and bpy.app.version[1] < 80):
     from bpy_extras import node_shader_utils
@@ -31,29 +34,69 @@ def export_mesh(filepath, context, blender_obj, mesh, materials, o3d_version):
         vert_map = {}
         vert_count = 0
 
-        mesh.calc_loop_triangles()
-        for tri_loop in mesh.loop_triangles:
-            tri = []
-            tris.append(tri)
+        if bpy.app.version < (2, 80):
+            mesh.calc_normals_split()
+            mesh.calc_tessface()
+            uv_layer = mesh.tessface_uv_textures.active
+            for face in mesh.tessfaces:
+                face_inds = []
 
-            for tri_vert, loop in zip(tri_loop.vertices, tri_loop.loops):
-                vert = mesh.vertices[tri_vert]
-                v_co = vert.co[:]
-                v_nrm = vert.normal[:]
-                v_uv = uv_layer[loop].uv[:2]
+                face_len = len(face.vertices)
+                for i in range(face_len):
+                    v_co = mesh.vertices[face.vertices[i]].co[:]
+                    v_nrm = face.split_normals[i][:]
+                    if uv_layer is not None:
+                        v_uv = uv_layer.data[face.index].uv[i][:]
+                    else:
+                        v_uv = (0, 0)
 
-                if (v_co, v_nrm) in vert_map:
-                    tri.append(vert_map[(v_co, v_nrm)])
-                else:
-                    vert_map[(v_co, v_nrm)] = vert_count
-                    verts.append(
-                        (-v_co[0], v_co[1], v_co[2],
-                         -v_nrm[0], v_nrm[1], v_nrm[2],
-                         v_uv[0], 1 - v_uv[1]))
-                    tri.append(vert_count)
-                    vert_count += 1
+                    if (v_co, v_nrm) in vert_map:
+                        face_inds.append(vert_map[(v_co, v_nrm)])
+                    else:
+                        vert_map[(v_co, v_nrm)] = vert_count
+                        verts.append(
+                            (-v_co[0], v_co[1], v_co[2],
+                             -v_nrm[0], v_nrm[1], v_nrm[2],
+                             v_uv[0], 1 - v_uv[1]))
 
-            tri.append(tri_loop.material_index)
+                        face_inds.append(vert_count)
+
+                        vert_count += 1
+
+                # Create the triangle
+                if face_len >= 3:
+                    tris.append((face_inds[0], face_inds[1], face_inds[2], face.material_index))
+
+                # Sometimes we have to deal with quads...
+                # 2---3
+                # | \ |
+                # 0---1
+                if face_len >= 4:
+                    tris.append((face_inds[1], face_inds[3], face_inds[2], face.material_index))
+        else:
+            mesh.calc_loop_triangles()
+            for tri_loop in mesh.loop_triangles:
+                tri = []
+                tris.append(tri)
+
+                for tri_vert, loop in zip(tri_loop.vertices, tri_loop.loops):
+                    vert = mesh.vertices[tri_vert]
+                    v_co = vert.co[:]
+                    v_nrm = vert.normal[:]
+                    v_uv = uv_layer[loop].uv[:2]
+
+                    if (v_co, v_nrm) in vert_map:
+                        tri.append(vert_map[(v_co, v_nrm)])
+                    else:
+                        vert_map[(v_co, v_nrm)] = vert_count
+                        verts.append(
+                            (-v_co[0], v_co[1], v_co[2],
+                             -v_nrm[0], v_nrm[1], v_nrm[2],
+                             v_uv[0], 1 - v_uv[1]))
+                        tri.append(vert_count)
+                        vert_count += 1
+
+                tri.append(tri_loop.material_index)
 
         # Construct embedded material array
         o3d_mats = []
@@ -66,12 +109,20 @@ def export_mesh(filepath, context, blender_obj, mesh, materials, o3d_version):
             if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
                 mat = mat.material
                 o3d_mat.extend(mat.diffuse_color)
-                o3d_mat.extend(mat.alpha)
-                o3d_mat.extend(mat.specular_color)
-                o3d_mat.extend(mat.emission_color)
+                o3d_mat.append(mat.alpha)
+                o3d_mat.extend(np.array(mat.specular_color) * mat.specular_intensity)
+                o3d_mat.extend(np.array(mat.diffuse_color) * mat.emit)
                 o3d_mat.append(mat.specular_hardness)
-                # TODO: Blender 2.79 compat for texture export in embedded materials
-                o3d_mat.append("")
+                texture_data = ""
+                for i, texture in reversed(list(enumerate(mat.texture_slots))):
+                    if texture is None or texture.texture_coords != 'UV' or not texture.use_map_color_diffuse:
+                        continue
+                    texture_data = bpy.data.textures[texture.name]
+                    if texture_data.type != 'IMAGE' or texture_data.image is None or not mat.use_textures[i]:
+                        continue
+                    texture_data = texture_data.image.name
+
+                o3d_mat.append(texture_data)
             else:
                 mat = node_shader_utils.PrincipledBSDFWrapper(mat.material, is_readonly=True)
                 o3d_mat.extend(mat.base_color)

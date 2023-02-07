@@ -68,7 +68,7 @@ def import_tile(context, filepath, import_scos, global_cfg, import_splines, spli
         blender_insts.extend(io_omsi_spline.import_map_splines(filepath, map_file, spline_tess_dist, spline_tess_angle))
 
     # Make collection
-    if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
+    if bpy.app.version < (2, 80):
         scene = bpy.context.scene
         scene.objects.link(terrain_obj)
     else:
@@ -78,10 +78,16 @@ def import_tile(context, filepath, import_scos, global_cfg, import_splines, spli
 
     bpy.ops.object.select_all(action='DESELECT')
 
-    terrain_obj.select_set(True)
-    bpy.ops.object.shade_smooth()
-    for o in blender_insts:
-        o.select_set(True)
+    if bpy.app.version < (2, 80):
+        terrain_obj = True
+        bpy.ops.object.shade_smooth()
+        for o in blender_insts:
+            o.select = True
+    else:
+        terrain_obj.select_set(True)
+        bpy.ops.object.shade_smooth()
+        for o in blender_insts:
+            o.select_set(True)
 
     log("Loaded tile {0} in {1} seconds!".format(filepath, time.time() - start_time))
 

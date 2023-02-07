@@ -50,7 +50,11 @@ def import_triangle(buff, offset, long_triangle_indices, invert_normals=False):
         return (t[0:3][::-1], t[3]), offset
 
 
-# Takes an o3d material struct and returns ((diffuse, specular, specularity, texture_name), newOffset); texture_name
+# Takes an o3d material struct and returns:
+#      ((diffuse_r, diffuse_g, diffuse_b, diffuse_a),
+#       (specular_r, specular_g, specular_b),
+#       (emission_r, emission_g, emission_b),
+#       specular_power, texture_name)
 # is set to None if one isn't specified in the file
 def import_material(buff, offset):
     m = struct.unpack_from("<fffffffffffB", buff, offset=offset)
@@ -64,7 +68,7 @@ def import_material(buff, offset):
         except:
             m_name = ""
         offset += path_len
-    return (m[0:4], m[4:7], m[10], m_name), offset
+    return (m[0:4], m[4:7], m[7:10], m[10], m_name), offset
 
 
 # Takes an o3d bone struct and returns ((name, weights), newOffset)

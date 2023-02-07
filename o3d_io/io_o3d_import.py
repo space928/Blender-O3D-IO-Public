@@ -5,6 +5,8 @@
 import time
 from math import radians
 
+import numpy as np
+
 import bpy
 import os
 
@@ -230,36 +232,40 @@ def generate_materials(cfg_materials, cfg_file_path, mat_counter, materials, mes
     # Create materials
     for matl in materials:
         # log(matl)
-        diffuseR = matl[0][0]
-        diffuseG = matl[0][1]
-        diffuseB = matl[0][2]
-        diffuseA = matl[0][3]
-        sepcR = matl[1][0]
-        sepcG = matl[1][1]
-        sepcB = matl[1][2]
-        specI = matl[2]
-        specH = matl[2] / 1000 * 510 + 1
+        diffuse_r = matl[0][0]
+        diffuse_g = matl[0][1]
+        diffuse_b = matl[0][2]
+        diffuse_a = matl[0][3]
+        spec_r = matl[1][0]
+        spec_g = matl[1][1]
+        spec_b = matl[1][2]
+        emit_r = matl[2][0]
+        emit_g = matl[2][0]
+        emit_b = matl[2][0]
+        spec_i = matl[3]
+        spec_h = matl[3]
         # matls.append(())
 
         # if bpy.data.materials.get("{0}".format(matl[7])) is None:
-        mat_blender = bpy.data.materials.new("{0}-{1}".format(matl[3], str(mat_counter)))
-        if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
+        mat_blender = bpy.data.materials.new("{0}-{1}".format(matl[4], str(mat_counter)))
+        if bpy.app.version < (2, 80):
             mat = mat_blender
-            mat.diffuse_color = (diffuseR, diffuseG, diffuseB)
-            mat.specular_hardness = specH
-            mat.specular_intensity = sepcR * 0
-            mat.specular_color = (sepcR, sepcG, sepcB)
+            mat.diffuse_color = (diffuse_r, diffuse_g, diffuse_b)
+            mat.specular_hardness = spec_h
+            mat.specular_intensity = 1
+            mat.specular_color = (spec_r, spec_g, spec_b)
+            mat.emit = np.mean(np.array(matl[2]) / np.max((np.array(matl[0][:3]), np.repeat(0.0001, 3)), axis=0))
         else:
             mat_blender.use_nodes = True
             mat = o3d_node_shader_utils.PrincipledBSDFWrapper(mat_blender, is_readonly=False)
-            mat.base_color = (diffuseR, diffuseG, diffuseB)
-            mat.specular = sepcR * 0
-            mat.roughness = 1 - specH
+            mat.base_color = (diffuse_r, diffuse_g, diffuse_b)
+            mat.specular = spec_r * 0
+            mat.roughness = 1 - spec_h
             # TODO: Specular tint doesn't support colour, find a solution
-            mat.specular_tint = 0  # (sepcR, sepcG, sepcB)
+            mat.specular_tint = 0  # (spec_r, spec_g, spec_b)
 
         # Load the diffuse texture and assign it to a new texture slot
-        diff_tex = load_texture_into_new_slot(cfg_file_path, matl[3], mat)
+        diff_tex = load_texture_into_new_slot(cfg_file_path, matl[4], mat)
         if diff_tex:
             if not (bpy.app.version[0] < 3 and bpy.app.version[1] < 80):
                 mat.base_color_texture.image = diff_tex.texture.image
@@ -267,7 +273,7 @@ def generate_materials(cfg_materials, cfg_file_path, mat_counter, materials, mes
             # In some versions of Blender the colourspace isn't correctly detected, force it to sRGB for diffuse
             diff_tex.texture.image.colorspace_settings.name = 'sRGB'
             # Read the material config to see if we need to apply transparency
-            key = (current_file_path[len(obj_root):], matl[3].lower())
+            key = (current_file_path[len(obj_root):], matl[4].lower())
             # cfg_materials should always contain an entry for the key, but if no [matl] tag is defined it won't
             # have a "diffuse" item
             if key in cfg_materials and "diffuse" in cfg_materials[key]:

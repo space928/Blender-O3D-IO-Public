@@ -24,7 +24,7 @@
 bl_info = {
     "name": "Import OMSI map/cfg/sco/o3d files",
     "author": "Adam/Thomas Mathieson",
-    "version": (0, 2, 2),
+    "version": (0, 2, 3),
     "blender": (3, 1, 0),
     "location": "File > Import-Export",
     "description": "Import OMSI model .map, .cfg, .sco, and .o3d files along with their meshes, UVs, and materials",
@@ -44,9 +44,6 @@ from bpy_extras.io_utils import (
     ExportHelper,
     axis_conversion,
 )
-
-if not (bpy.app.version[0] < 3 and bpy.app.version[1] < 80):
-    pass
 
 from bpy.props import (BoolProperty,
                        FloatProperty,
@@ -99,6 +96,13 @@ class ImportModelCFG(bpy.types.Operator, ImportHelper):
         options={'HIDDEN'},
     )
 
+    import_x = BoolProperty(
+        name="Import .x Files",
+        description="Attempt to import .x files, this can be buggy and only works if you have the correct .x importer "
+                    "already installed.",
+        default=True,
+    )
+
     # Selected files
     files = CollectionProperty(type=bpy.types.PropertyGroup)
 
@@ -109,7 +113,7 @@ class ImportModelCFG(bpy.types.Operator, ImportHelper):
         :return: success message
         """
         context.window.cursor_set('WAIT')
-        io_o3d_import.do_import(self.filepath, context)
+        io_o3d_import.do_import(self.filepath, context, self.import_x)
         context.window.cursor_set('DEFAULT')
 
         return {'FINISHED'}
@@ -155,7 +159,11 @@ class ExportModelCFG(bpy.types.Operator, ExportHelper):
             from_up='Z',
             to_forward='Z',
             to_up='Y',
-        ).to_4x4() @ Matrix.Scale(self.global_scale, 4)
+        ).to_4x4()
+        if bpy.app.version < (2, 80):
+            global_matrix = global_matrix * Matrix.Scale(self.global_scale, 4)
+        else:
+            global_matrix = global_matrix @ Matrix.Scale(self.global_scale, 4)
 
         io_o3d_export.do_export(self.filepath, context, global_matrix, self.use_selection, self.o3d_version)
 
@@ -216,6 +224,13 @@ class ImportOMSITile(bpy.types.Operator, ImportHelper):
         default=0.005,
     )
 
+    import_x = BoolProperty(
+        name="Import .x Files",
+        description="Attempt to import .x files, this can be buggy and only works if you have the correct .x importer "
+                    "already installed.",
+        default=True,
+    )
+
     # Selected files
     files = CollectionProperty(type=bpy.types.PropertyGroup)
 
@@ -227,7 +242,7 @@ class ImportOMSITile(bpy.types.Operator, ImportHelper):
         """
         context.window.cursor_set('WAIT')
         io_omsi_tile.do_import(context, self.filepath, self.import_scos, self.import_splines, self.spline_tess_dist,
-                               self.spline_curve_sag)
+                               self.spline_curve_sag, self.import_x)
         context.window.cursor_set('DEFAULT')
 
         return {'FINISHED'}

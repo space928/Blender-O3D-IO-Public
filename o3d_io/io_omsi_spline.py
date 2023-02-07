@@ -66,7 +66,8 @@ class Spline:
 
         # Work out what tessellation increment we should use, this will always be greater than or equal to the one
         # specified but needs to be the correct size to divide the length into a whole number of segments
-        dx = min(self.length / math.ceil(self.length / spline_tess_dist), self.length)
+        n_segments = max(math.ceil(self.length / spline_tess_dist), 1)
+        dx = self.length / n_segments
         # How much to rotate at each step in radians such that the average arc distance ~= spline_tess_dist
         rot_dir = math.copysign(1, self.radius)
         self.radius = abs(self.radius)
@@ -77,7 +78,8 @@ class Spline:
             # Sag distance based angle increment, clamped to 0.06deg < x < 90deg
             dr_b = 2 * math.acos(1 - clamp(spline_curve_sag / self.radius, 0.001, 0.294))
             dr = min(dr_a, dr_b)
-            dr = min(revs / math.ceil(revs / dr), revs)
+            n_segments = max(math.ceil(revs / dr), 1)
+            dr = revs / n_segments
             # log(f"len={self.length:.3f} rad={self.radius:.3f} revs={revs*180/math.pi:.3f} "
             #     f"dr_a={dr_a*180/math.pi:.3f} dr_b={dr_b:.3f} dbg={1 - spline_curve_sag / self.radius}"
             #     f"dr={dr*180/math.pi:.3f}")
@@ -85,51 +87,48 @@ class Spline:
             dr = 0
 
         for profile_part in sli[0]:
+            profile_len = len(profile_part)
             pos_offset = mathutils.Vector((0, dx if self.radius <= 0 else 0, 0))
             curr_len = 0
             curr_pos = np.array((0.0, 0.0, 0.0))
             curr_rot = [0.09 * self.startGrad, -0.09 * self.cantStart, 0]
             curve_rot_ang = 0
             m_verts = []
-            while abs(curr_len) <= self.length:
+            for i in range(n_segments + 1):
                 skew = (self.skewStart * (1 - curr_len / self.length) + self.skewEnd * curr_len / self.length)
-                line = [np.array([profile_part[0][0], skew * profile_part[0][0], profile_part[0][1]]),
-                        np.array([profile_part[1][0], skew * profile_part[1][0], profile_part[1][1]])]
+                line = [np.array([profile_part[p][0], skew * profile_part[p][0], profile_part[p][1]])
+                        for p in range(profile_len)]
                 # Transform the slice
                 # rot_matrix = R.from_euler("xyz", curr_rot, degrees=True)
                 rot_matrix = mathutils.Euler((math.radians(curr_rot[0]), math.radians(curr_rot[1]),
                                               0), 'XYZ')
 
                 if self.mirror:
-                    line[0][0] = -line[0][0]
-                    line[1][0] = -line[1][0]
+                    for p in range(profile_len):
+                        line[p][0] = -line[p][0]
 
-                r_line0 = mathutils.Vector(line[0])
-                r_line1 = mathutils.Vector(line[1])
-                r_line0.rotate(rot_matrix)
-                r_line1.rotate(rot_matrix)
+                r_lines = [mathutils.Vector(line[p]) for p in range(profile_len)]
+                [r_line.rotate(rot_matrix) for r_line in r_lines]
 
                 if self.radius > 0:
-                    curve_rot = mathutils.Matrix.Translation((self.radius * rot_dir, 0, 0)) \
-                                @ mathutils.Matrix.Rotation(curve_rot_ang, 4, "Z") \
-                                @ mathutils.Matrix.Translation((-self.radius * rot_dir, 0, 0))
-                    r_line0 = curve_rot @ r_line0
-                    r_line1 = curve_rot @ r_line1
+                    if bpy.app.version < (2, 80):
+                        curve_rot = mathutils.Matrix.Translation((self.radius * rot_dir, 0, 0)) \
+                                    * mathutils.Matrix.Rotation(curve_rot_ang, 4, "Z") \
+                                    * mathutils.Matrix.Translation((-self.radius * rot_dir, 0, 0))
+                        r_lines = [curve_rot * r_line for r_line in r_lines]
+                    else:
+                        curve_rot = mathutils.Matrix.Translation((self.radius * rot_dir, 0, 0)) \
+                                    @ mathutils.Matrix.Rotation(curve_rot_ang, 4, "Z") \
+                                    @ mathutils.Matrix.Translation((-self.radius * rot_dir, 0, 0))
+                        r_lines = [curve_rot @ r_line for r_line in r_lines]
 
-                line[0] = np.array(r_line0) + curr_pos
-                line[1] = np.array(r_line1) + curr_pos
-
-                # line[0][1] = -line[0][1]
-                # line[1][1] = -line[1][1]
-                # line[0][0] = -line[0][0]
-                # line[1][0] = -line[1][0]
+                line = [np.array(r_line) + curr_pos for r_line in r_lines]
 
                 # Add to the vert list
                 m_verts.extend(line)
 
                 # Create UVs
-                uvs.append([profile_part[0][2], curr_len * profile_part[0][3]])
-                uvs.append([profile_part[1][2], curr_len * profile_part[1][3]])
+                uvs.extend([(profile_part[p][2], curr_len * profile_part[p][3]) for p in range(profile_len)])
 
                 # Increment position and rotation
                 pos_offset.rotate(rot_matrix)
@@ -148,15 +147,37 @@ class Spline:
                 else:
                     curr_len += dx
 
-            for x in range(len(m_verts) // 2 - 1):
-                if self.mirror:
-                    tris.append((v_count + x * 2, v_count + x * 2 + 3, v_count + x * 2 + 1))
-                    tris.append((v_count + x * 2, v_count + x * 2 + 2, v_count + x * 2 + 3))
-                else:
-                    tris.append((v_count + x * 2 + 1, v_count + x * 2 + 3, v_count + x * 2))
-                    tris.append((v_count + x * 2 + 3, v_count + x * 2 + 2, v_count + x * 2))
+            # Construct triangles for the current strip (ie the current [profile])
+            # The vertex array should look like this for a [profile] with three points:
+            #   {End}
+            # 9--10--11      6---7
+            # | / | / |      | / |
+            # 6---7---8      4---5
+            # | / | / |      | / |
+            # 3---4---5      2---3
+            # | / | / |      | / |
+            # 0---1---2      0---1
+            #  {Start}       /\ For a profile with 2 points
+            for x in range(n_segments):
+                for y in range(profile_len - 1):
+                    if self.mirror:
+                        # CW winding
+                        tris.append((y + v_count + x * profile_len,             # 0 / 0
+                                     y + v_count + (x + 1) * profile_len + 1,   # 4 / 3
+                                     y + v_count + x * profile_len + 1))        # 1 / 1
+                        tris.append((y + v_count + x * profile_len,             # 0 / 0
+                                     y + v_count + (x + 1) * profile_len,       # 3 / 2
+                                     y + v_count + (x + 1) * profile_len + 1))  # 4 / 3
+                    else:
+                        # CCW winding
+                        tris.append((y + v_count + x * profile_len + 1,         # 1 / 1
+                                     y + v_count + (x + 1) * profile_len + 1,   # 4 / 3
+                                     y + v_count + x * profile_len))            # 0 / 0
+                        tris.append((y + v_count + (x + 1) * profile_len + 1,   # 4 / 3
+                                     y + v_count + (x + 1) * profile_len,       # 3 / 2
+                                     y + v_count + x * profile_len))            # 0 / 0
 
-            mat_ids.extend([profile_part[0][4] for x in range(len(m_verts) - 2)])
+            mat_ids.extend([profile_part[0][4] for x in range(n_segments * (profile_len - 1) * 2)])
 
             verts.extend(m_verts)
             v_count += len(m_verts)

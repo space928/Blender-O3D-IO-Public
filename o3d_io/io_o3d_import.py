@@ -26,7 +26,7 @@ def log(*args):
 dbg_unrecognised_commands = set()
 
 
-def do_import(filepath, context):
+def do_import(filepath, context, import_x):
     """
     Imports the selected CFG/SCO/O3D file
     :param filepath: the path to the file to import
@@ -53,18 +53,27 @@ def do_import(filepath, context):
         bpy.context.window_manager.progress_update(index)
 
         if path_to_file[-1:] == "x":
+            if not import_x:
+                bpy.ops.object.select_all(action='DESELECT')
+                continue
+
             # X files are not supported by this importer
             try:
                 x_file_path = {"name": os.path.basename(path_to_file)}
                 # Clunky solution to work out what has been imported because the x importer doesn't set selection
                 old_objs = set(context.scene.objects)
                 # For now the x file importer doesn't handle omsi x files very well, materials aren't imported correctly
+                bpy.ops.object.select_all(action='DESELECT')
                 bpy.ops.import_scene.x(filepath=path_to_file, files=[x_file_path], axis_forward='Z', axis_up='Y',
                                        use_split_objects=False, use_split_groups=False, parented=False,
                                        quickmode=True)
                 # mat_counter = generate_materials(cfg_materials, filepath, mat_counter, materials, mesh, obj_root,
                 #                                 path_to_file)
-                blender_objs.extend(set(context.scene.objects) - old_objs)
+                new_objs = set(context.scene.objects) - old_objs
+                blender_objs.extend(new_objs)
+
+
+
                 continue
             except:
                 log("WARNING: {0} was not imported! A compatible X importer was not found! Please use: "
@@ -169,12 +178,12 @@ def do_import(filepath, context):
             for vert in bone[1]:
                 blender_obj.vertex_groups[bone[0]].add([vert[0]], vert[1], "REPLACE")
 
-        bpy.ops.object.select_all(action='DESELECT')
-        if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
-            blender_obj.select = True
-        else:
-            blender_obj.select_set(True)
-        bpy.ops.object.select_all(action='DESELECT')
+        # bpy.ops.object.select_all(action='DESELECT')
+        # if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
+        #     blender_obj.select = True
+        # else:
+        #     blender_obj.select_set(True)
+        # bpy.ops.object.select_all(action='DESELECT')
 
     # Create lights
     for light in lights:
@@ -206,11 +215,8 @@ def do_import(filepath, context):
         # Change light position
         light_object.location = (light_cfg["x_pos"], light_cfg["y_pos"], light_cfg["z_pos"])
 
-    for ob in bpy.context.selected_objects:
-        if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
-            ob.select = True
-        else:
-            ob.select_set(True)
+
+    bpy.ops.object.select_all(action='DESELECT')
     for x in blender_objs:
         if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
             x.select = True

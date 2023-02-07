@@ -13,12 +13,13 @@ def log(*args):
     print("[OMSI_Tile_Import]", *args)
 
 
-def do_import(context, filepath, import_scos, import_splines, spline_tess_dist, spline_tess_angle):
+def do_import(context, filepath, import_scos, import_splines, spline_tess_dist, spline_tess_angle, import_x):
     # Read global.cfg
     global_cfg = read_cfg_file(os.path.join(os.path.dirname(filepath), "global.cfg"))
 
     if filepath[-3:] == "map":
-        import_tile(context, filepath, import_scos, global_cfg, import_splines, spline_tess_dist, spline_tess_angle)
+        import_tile(context, filepath, import_scos, global_cfg, import_splines, spline_tess_dist, spline_tess_angle,
+                    import_x)
     elif filepath[-3:] == "cfg":
         start_time = time.time()
         working_dir = os.path.dirname(filepath)
@@ -32,7 +33,7 @@ def do_import(context, filepath, import_scos, import_splines, spline_tess_dist, 
             log("### Loading " + path)
 
             import_tile(context, os.path.join(working_dir, path), import_scos, global_cfg, import_splines,
-                        spline_tess_dist, spline_tess_angle)
+                        spline_tess_dist, spline_tess_angle, import_x)
 
             bpy.ops.transform.translate(value=(x * 300, y * 300, 0))
 
@@ -50,7 +51,8 @@ def do_import(context, filepath, import_scos, import_splines, spline_tess_dist, 
                                                                              time.time() - start_time))
 
 
-def import_tile(context, filepath, import_scos, global_cfg, import_splines, spline_tess_dist, spline_tess_angle):
+def import_tile(context, filepath, import_scos, global_cfg, import_splines, spline_tess_dist, spline_tess_angle,
+                import_x):
     start_time = time.time()
 
     map_file = read_cfg_file(filepath)
@@ -60,7 +62,7 @@ def import_tile(context, filepath, import_scos, global_cfg, import_splines, spli
 
     blender_insts = []
     if import_scos:
-        blender_insts = import_map_objects(filepath, map_file, terr_heights)
+        blender_insts = import_map_objects(filepath, map_file, terr_heights, import_x)
 
     if import_splines:
         blender_insts.extend(io_omsi_spline.import_map_splines(filepath, map_file, spline_tess_dist, spline_tess_angle))
@@ -281,7 +283,7 @@ def get_interpolated_height(terr_heights, x, y):
     return lerp(il, ih, y_frac)
 
 
-def import_map_objects(filepath, map_file, terr_heights):
+def import_map_objects(filepath, map_file, terr_heights, import_x):
     objs = []
     blender_insts = []
 
@@ -299,7 +301,7 @@ def import_map_objects(filepath, map_file, terr_heights):
 
         objs.append({"path": os.path.join(omsi_dir, path), "id": obj_id, "pos": pos, "rot": rot})
 
-    log(f"Loaded {len(objs)} objects!")
+    log("Loaded {0} objects!".format(len(objs)))
 
     loaded_objs = {}
     for obj in objs:
@@ -318,7 +320,7 @@ def import_map_objects(filepath, map_file, terr_heights):
         else:
             # bpy.ops.mesh.primitive_cube_add(location=pos)
             try:
-                bpy.ops.import_scene.omsi_model_cfg(filepath=path)
+                bpy.ops.import_scene.omsi_model_cfg(filepath=path, import_x=import_x)
             except:
                 log("Exception encountered loading: " + path)
 

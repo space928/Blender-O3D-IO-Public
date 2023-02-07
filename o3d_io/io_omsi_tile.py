@@ -311,10 +311,16 @@ def import_map_objects(filepath, map_file, terr_heights, import_x):
 
         if path in loaded_objs:
             # Save time by duplicating existing objects
-            for o in bpy.context.selected_objects:
-                o.select_set(False)
-            for o in loaded_objs[path]:
-                o.select_set(True)
+            if bpy.app.version < (2, 80):
+                for o in bpy.context.selected_objects:
+                    o.select = False
+                for o in loaded_objs[path]:
+                    o.select = True
+            else:
+                for o in bpy.context.selected_objects:
+                    o.select_set(False)
+                for o in loaded_objs[path]:
+                    o.select_set(True)
             bpy.ops.object.duplicate_move_linked()
 
         else:

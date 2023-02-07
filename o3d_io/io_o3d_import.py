@@ -178,13 +178,6 @@ def do_import(filepath, context, import_x):
             for vert in bone[1]:
                 blender_obj.vertex_groups[bone[0]].add([vert[0]], vert[1], "REPLACE")
 
-        # bpy.ops.object.select_all(action='DESELECT')
-        # if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
-        #     blender_obj.select = True
-        # else:
-        #     blender_obj.select_set(True)
-        # bpy.ops.object.select_all(action='DESELECT')
-
     # Create lights
     for light in lights:
         light_cfg = cfg_materials[light]["light"]

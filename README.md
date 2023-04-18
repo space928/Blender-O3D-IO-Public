@@ -1,6 +1,6 @@
 # Blender-O3D-IO
 
-[En Français](README-FR.md) (Merci a @boingtheboeing pour la traduction)
+[En Français](README-FR.md) (Merci a [@boingtheboeing](https://github.com/boingtheboeing) pour la traduction)
 
 A plugin supporting blender 2.79-3.x for importing and exporting OMSI .sco, .cfg, and .o3d files.
 

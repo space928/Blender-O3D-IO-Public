@@ -234,7 +234,7 @@ def import_terrain_mesh(filepath, global_cfg):
         for y in range(terr_dim)
     ]
 
-    new_mesh = bpy.data.meshes.new("terrain_mesh-" + filepath)
+    new_mesh = bpy.data.meshes.new("terrain_mesh-" + os.path.basename(filepath))
     new_mesh.from_pydata(verts, [], faces)
     if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
         new_mesh.uv_textures.new("UV Map")
@@ -249,7 +249,7 @@ def import_terrain_mesh(filepath, global_cfg):
     generate_terrain_materials(new_mesh, filepath, global_cfg)
 
     # Make object from mesh
-    return bpy.data.objects.new("terrain-" + filepath, new_mesh), heights
+    return bpy.data.objects.new("terrain-" + os.path.basename(filepath), new_mesh), heights
 
 
 def lerp(a, b, t):
@@ -327,6 +327,8 @@ def import_map_objects(filepath, map_file, terr_heights, import_x):
                     o.select_set(False)
                 for o in loaded_objs[path]:
                     o.select_set(True)
+            # TODO: Replace this with a low level method to prevent slow down
+            # See: https://blenderartists.org/t/python-slowing-down-over-time/569534
             bpy.ops.object.duplicate_move_linked()
 
         else:

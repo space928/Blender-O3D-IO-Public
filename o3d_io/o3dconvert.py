@@ -123,7 +123,7 @@ def import_triangle_list(buff, offset, l_header, long_triangle_indices):
 
     tris = []
     for t in range(header):
-        nt = import_triangle(buff, offset, long_triangle_indices)
+        nt = import_triangle(buff, offset, long_triangle_indices, True)
         tris.append(nt[0])
         offset = nt[1]
 
@@ -185,8 +185,8 @@ def import_o3d(packed_bytes):
         if header[2] > 3:
             # Long header variant, sometimes encrypted
             bonus_header = struct.unpack_from("<BI", packed_bytes, offset=off)
-            # log("Extended header options: long_triangle_indices={0}; alt_encryption_seed={1}".format(
-            #    bonus_header[0] & 1 == 1, bonus_header[0] & 2 == 2))
+            # log("Extended header options: long_triangle_indices={0}; alt_encryption_seed={1}; encryption_key={2}".format(
+            #    bonus_header[0] & 1 == 1, bonus_header[0] & 2 == 2, bonus_header[1]))
             if bonus_header[1] != 0xffffffff:
                 encrypted = True
                 # log("Encrypted file detected!")
@@ -266,12 +266,13 @@ def export_material(write, material):
     specular_power, texture_name)
     """
     write("<fffffffffff", *material[:-1])
-    write("<{0}p".format(len(material[-1]) + 1), material[-1].encode("cp1252"))
+    # write("<B", len(material[-1]))
+    write("<{0}p".format(len(material[-1])+1), material[-1].encode("cp1252"))
 
 
 def export_bone(write, bone, long_triangle_indices):
-    write("<B", len(bone[0]))
-    write("<{0}p".format(len(bone[0])), bone[0].encode("cp1252"))
+    # write("<B", len(bone[0]))
+    write("<{0}p".format(len(bone[0])+1), bone[0].encode("cp1252"))
 
     write("<H", len(bone[1]))
     for w in bone[1]:
@@ -376,6 +377,7 @@ def export_o3d(file, vertex_list, triangle_list, material_list, bone_list, trans
         # Write extended header
         options_byte = (1 if long_triangle_indices else 0) | (2 if alt_encryption_seed else 0)
         if not encrypted:
+            # TODO: I think encryption is currently broken
             encryption_key = 0xffffffff
         write("<BI", options_byte, encryption_key)
 

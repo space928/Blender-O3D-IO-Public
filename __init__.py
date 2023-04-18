@@ -24,7 +24,7 @@
 bl_info = {
     "name": "Import OMSI map/cfg/sco/o3d files",
     "author": "Adam/Thomas Mathieson",
-    "version": (0, 2, 4),
+    "version": (1, 1, 2),
     "blender": (3, 1, 0),
     "location": "File > Import-Export",
     "description": "Import OMSI model .map, .cfg, .sco, and .o3d files along with their meshes, UVs, and materials",
@@ -97,9 +97,26 @@ class ImportModelCFG(bpy.types.Operator, ImportHelper):
     )
 
     import_x = BoolProperty(
-        name="Import .x Files",
+        name="Import .x files",
         description="Attempt to import .x files, this can be buggy and only works if you have the correct .x importer "
                     "already installed.",
+        default=True,
+    )
+
+    override_text_encoding = StringProperty(
+        name="Override text encoding (leave blank for default)",
+        description="If you are having issues with some letters/accents in object names not importing correctly, try "
+                    "adjusting this. Sometimes model cfg files are encoded with an unusual encoding scheme. This "
+                    "usually depends on the region/language of the computer used to make the cfg file. For western "
+                    "Europe try: 'cp-1252', for Eastern Europe (Cyrillic languages) try: 'cp-1251', for a full list of "
+                    "supported encodings check this website: "
+                    "https://docs.python.org/3/library/codecs.html#standard-encodings",
+        default="",
+    )
+
+    hide_lods = BoolProperty(
+        name="Hide additional LODs",
+        description="Hides any meshes in LODs other than the highest quality one.",
         default=True,
     )
 
@@ -113,7 +130,7 @@ class ImportModelCFG(bpy.types.Operator, ImportHelper):
         :return: success message
         """
         context.window.cursor_set('WAIT')
-        io_o3d_import.do_import(self.filepath, context, self.import_x)
+        io_o3d_import.do_import(self.filepath, context, self.import_x, self.override_text_encoding, self.hide_lods)
         context.window.cursor_set('DEFAULT')
 
         return {'FINISHED'}
@@ -136,7 +153,7 @@ class ExportModelCFG(bpy.types.Operator, ExportHelper):
     use_selection = BoolProperty(
         name="Selection Only",
         description="Export selected objects only",
-        default=False,
+        default=True,
     )
     global_scale = FloatProperty(
         name="Scale",
@@ -154,17 +171,7 @@ class ExportModelCFG(bpy.types.Operator, ExportHelper):
     def execute(self, context):
         context.window.cursor_set('WAIT')
 
-        global_matrix = axis_conversion(
-            from_forward='Y',
-            from_up='Z',
-            to_forward='Z',
-            to_up='Y',
-        ).to_4x4()
-        if bpy.app.version < (2, 80):
-            global_matrix = global_matrix * Matrix.Scale(self.global_scale, 4)
-        else:
-            global_matrix = global_matrix @ Matrix.Scale(self.global_scale, 4)
-
+        global_matrix = Matrix.Scale(self.global_scale, 4)
         io_o3d_export.do_export(self.filepath, context, global_matrix, self.use_selection, self.o3d_version)
 
         context.window.cursor_set('DEFAULT')

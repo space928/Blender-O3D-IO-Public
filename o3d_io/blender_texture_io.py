@@ -29,7 +29,7 @@ class TextureSlotWrapper:
         self.texture = TextureSlotWrapper.TextureWrapper(image)
 
 
-def load_texture_into_new_slot(base_file_path, texture_path, mat, abs_path=False):
+def load_image(base_file_path, texture_path, abs_path=False):
     if base_file_path[-3:] == "sco":
         tex_file = os.path.dirname(base_file_path) + "\\texture\\" + texture_path.lower()
     elif base_file_path[-3:] == "map":
@@ -96,6 +96,16 @@ def load_texture_into_new_slot(base_file_path, texture_path, mat, abs_path=False
                 # Pack the image into .blend so it gets saved with it
                 image.pack()
 
+        return image
+    else:
+        log("WARNING: Couldn't find texture: {0}".format(texture_path))
+        return None
+
+
+def load_texture_into_new_slot(base_file_path, texture_path, mat, abs_path=False):
+    image = load_image(base_file_path, texture_path, abs_path)
+
+    if image is not None:
         if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
             tex = bpy.data.textures.new(texture_path, type="IMAGE")
             tex.type_recast()

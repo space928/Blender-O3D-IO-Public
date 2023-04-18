@@ -643,7 +643,6 @@ def write_cfg(filepath, objs, context):
         with open(filepath, "w") as f:
             log("Writing cfg file...")
             scene = bpy.data.scenes[context.scene.name]
-            cfg_props = scene["cfg_data"]
             if "groups" not in scene:
                 scene["groups"] = {
                     "ind": 1,

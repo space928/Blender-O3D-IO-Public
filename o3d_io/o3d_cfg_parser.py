@@ -7,7 +7,8 @@ import os
 import mathutils
 
 import bpy
-from io_batch_import_model_cfg.o3d_io import o3d_node_shader_utils
+if bpy.app.version > (2, 80):
+    from . import o3d_node_shader_utils
 
 
 def log(*args):

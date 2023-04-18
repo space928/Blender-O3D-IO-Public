@@ -269,7 +269,7 @@ def do_export(filepath, context, global_matrix, use_selection, o3d_version):
         index += 1
 
     if not single_o3d:
-        cfg_materials = o3d_cfg_parser.write_cfg(filepath, obs, context)
+        cfg_materials = o3d_cfg_parser.write_cfg(filepath, obs, context, use_selection)
 
     bpy.context.window_manager.progress_end()
     log("Exported {0} models in {1} seconds!".format(len(obs), time.time() - start_time))

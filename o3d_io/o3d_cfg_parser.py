@@ -157,7 +157,6 @@ def read_cfg(filepath, override_text_encoding):
                 m_light["y_pos"] = float(line)
             elif param_ind == 7:
                 m_light["z_pos"] = float(line)
-                m_light["last_line"] = i
 
         elif current_command == "[spotlight]":
             if param_ind == -1:
@@ -291,44 +290,61 @@ def read_cfg(filepath, override_text_encoding):
                 cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["change_var"] = line
 
         elif current_command == "[matl_alpha]":
+            if current_mat is None:
+                log("Invalid command {0} at line {1}! Must precede a [matl] command!".format(current_command, i))
+                continue
+
             if param_ind == 0:
                 try:
                     cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["alpha"] = (int(line), i)
                 except ValueError:
                     log("Found matl_alpha tag with invalid parameter! Line=" + str(i))
 
-                cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["last_line"] = i
-
         elif current_command == "[matl_transmap]":
+            if current_mat is None:
+                log("Invalid command {0} at line {1}! Must precede a [matl] command!".format(current_command, i))
+                continue
+
             if param_ind == 0:
                 cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["transmap"] = (line, i)
-                cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["last_line"] = i
 
         elif current_command == "[matl_envmap]":
+            if current_mat is None:
+                log("Invalid command {0} at line {1}! Must precede a [matl] command!".format(current_command, i))
+                continue
+
             # TODO: Load the actual transmap
             if param_ind == 0:
                 cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["envmap_tex"] = line
             if param_ind == 1:
                 cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["envmap"] = (float(line), i)
-                cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["last_line"] = i
 
         elif current_command == "[matl_envmap_mask]":
+            if current_mat is None:
+                log("Invalid command {0} at line {1}! Must precede a [matl] command!".format(current_command, i))
+                continue
+
             if param_ind == 0:
                 cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["envmap_mask"] = (line, i)
-                cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["last_line"] = i
 
         elif current_command == "[matl_bumpmap]":
+            if current_mat is None:
+                log("Invalid command {0} at line {1}! Must precede a [matl] command!".format(current_command, i))
+                continue
+
             if param_ind == 0:
                 cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["bumpmap"] = (line, i)
             if param_ind == 1:
                 cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["bumpmap_strength"] = (
                     float(line), i)
-                cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["last_line"] = i
 
         elif current_command == "[alphascale]":
+            if current_mat is None:
+                log("Invalid command {0} at line {1}! Must precede a [matl] command!".format(current_command, i))
+                continue
+
             if param_ind == 0:
                 cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["alphascale"] = (line, i)
-                cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["last_line"] = i
 
             # alphascale is not currently exported correctly, so we'll re-add it to the cfg_data as an unparsed command
             # so that it re-exports correctly
@@ -338,9 +354,12 @@ def read_cfg(filepath, override_text_encoding):
                 cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat][current_command].append(line)
 
         elif current_command == "[matl_noZwrite]":
+            if current_mat is None:
+                log("Invalid command {0} at line {1}! Must precede a [matl] command!".format(current_command, i))
+                continue
+
             if param_ind == -1:
                 cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["noZwrite"] = True
-                cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["last_line"] = i
 
             # alphascale is not currently exported correctly, so we'll re-add it to the cfg_data as an unparsed command
             # so that it re-exports correctly
@@ -350,9 +369,12 @@ def read_cfg(filepath, override_text_encoding):
                 cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat][current_command].append(line)
 
         elif current_command == "[matl_noZcheck]":
+            if current_mat is None:
+                log("Invalid command {0} at line {1}! Must precede a [matl] command!".format(current_command, i))
+                continue
+
             if param_ind == -1:
                 cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["noZcheck"] = True
-                cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["last_line"] = i
 
             # alphascale is not currently exported correctly, so we'll re-add it to the cfg_data as an unparsed command
             # so that it re-exports correctly
@@ -362,13 +384,14 @@ def read_cfg(filepath, override_text_encoding):
                 cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat][current_command].append(line)
 
         elif current_command == "[matl_allcolor]":
+            if current_mat is None:
+                log("Invalid command {0} at line {1}! Must precede a [matl] command!".format(current_command, i))
+                continue
+
             if param_ind == -1:
                 cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["allcolor"] = []
             elif param_ind < 14:
                 cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["allcolor"].append((float(line), i))
-
-            if param_ind == 13:
-                cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["last_line"] = i
 
             # Allcolor is not currently exported correctly, so we'll re-add it to the cfg_data as an unparsed command
             # so that it re-exports correctly
@@ -378,14 +401,20 @@ def read_cfg(filepath, override_text_encoding):
                 cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat][current_command].append(line)
 
         elif current_command == "[matl_nightmap]":
+            if current_mat is None:
+                log("Invalid command {0} at line {1}! Must precede a [matl] command!".format(current_command, i))
+                continue
+
             if param_ind == 0:
                 cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["nightmap"] = (line, i)
-                cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["last_line"] = i
 
         elif current_command == "[matl_lightmap]":
+            if current_mat is None:
+                log("Invalid command {0} at line {1}! Must precede a [matl] command!".format(current_command, i))
+                continue
+
             if param_ind == 0:
                 cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["lightmap"] = (line, i)
-                cfg_data[current_lod]["meshes"][current_mesh]["matls"][current_mat]["last_line"] = i
 
         # Unused commands are parsed and stored in the cfg_data dictionary, but they keep their square brackets so they
         # can be differentiated later.
@@ -630,12 +659,13 @@ def write_cfg_object(context, f, filepath, obj):
         log("Unsupported object type for export: {0} for {1}".format(obj.type, obj.name))
 
 
-def write_cfg(filepath, objs, context):
+def write_cfg(filepath, objs, context, selection_only):
     """
     Attempts to merge blender objects into an existing CFG/SCO file
+    :param selection_only: whether to only export selected objects
     :param context: the current Blender context
     :param filepath: path to the cfg file, if it doesn't exist a new one will be created
-    :param objs: the array of Blender objects to export
+    :param objs: [Deprecated] the array of Blender objects to export
     :return:
     """
 
@@ -692,6 +722,14 @@ def write_cfg(filepath, objs, context):
                 non_lods.extend(context.scene.collection.objects)
 
             for obj in non_lods:
+                if selection_only:
+                    if bpy.app.version > (2, 80):
+                        if not obj.select_get():
+                            continue
+                    else:
+                        if not obj.select:
+                            continue
+
                 # log("Exporting {0}...".format(obj.name))
                 write_cfg_object(context, f, filepath, obj)
 
@@ -707,5 +745,13 @@ def write_cfg(filepath, objs, context):
                     objs = bpy.data.collections[lod[0]].all_objects
 
                 for obj in objs:
+                    if selection_only:
+                        if bpy.app.version > (2, 80):
+                            if not obj.select_get():
+                                continue
+                        else:
+                            if not obj.select:
+                                continue
+
                     # log("Exporting {0}...".format(obj.name))
                     write_cfg_object(context, f, filepath, obj)

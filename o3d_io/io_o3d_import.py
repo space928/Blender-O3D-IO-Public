@@ -24,6 +24,13 @@ from .blender_texture_io import load_texture_into_new_slot, load_image
 def log(*args):
     print("[O3D_Import]", *args)
 
+def platform_related_path(path):
+    """
+    Return a string with correct path separators for the current platform
+    :param path: the path to convert
+    :return: the converted path
+    """
+    return path.replace("/", os.sep).replace("\\", os.sep)
 
 def do_import(filepath, context, import_x, override_text_encoding, hide_lods):
     """
@@ -104,6 +111,7 @@ def do_import(filepath, context, import_x, override_text_encoding, hide_lods):
                 continue
 
         # Load mesh
+        path_to_file = platform_related_path(path_to_file)
         with open(path_to_file, "rb") as f:
             o3d_bytes = f.read()
         log("[{0:.2f}%] Loading {1}...".format((index + 1) / len(files) * 100, path_to_file))

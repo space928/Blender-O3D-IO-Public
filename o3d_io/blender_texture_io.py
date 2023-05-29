@@ -31,11 +31,11 @@ class TextureSlotWrapper:
 
 def load_image(base_file_path, texture_path, abs_path=False):
     if base_file_path[-3:] == "sco":
-        tex_file = os.path.dirname(base_file_path) + "\\texture\\" + texture_path.lower()
+        tex_file = os.path.join(os.path.dirname(base_file_path), "texture", texture_path.lower())
     elif base_file_path[-3:] == "map":
-        tex_file = os.path.dirname(base_file_path) + "\\..\\..\\" + texture_path.lower()
+        tex_file = os.path.join(os.path.dirname(base_file_path), "..", "..", texture_path.lower())
     else:
-        tex_file = os.path.dirname(base_file_path) + "\\..\\texture\\" + texture_path.lower()
+        tex_file = os.path.join(os.path.dirname(base_file_path), "..", "texture", texture_path.lower())
 
     if abs_path:
         tex_file = texture_path.lower()

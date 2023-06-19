@@ -46,7 +46,7 @@ def read_cfg(filepath, override_text_encoding):
     # get the folder
     folder = (os.path.dirname(filepath))
     if filepath[-3:] == "sco":
-        folder += "\\model"
+        folder = os.path.join(folder, "model")
 
     # log("Loading " + filepath)
     encoding = override_text_encoding if override_text_encoding.strip() != "" else "1252"
@@ -111,7 +111,7 @@ def read_cfg(filepath, override_text_encoding):
         elif current_command == "[mesh]":
             if param_ind == 0:
                 current_mat = None
-                mesh_path = folder + "\\" + line
+                mesh_path = os.path.join(folder, line)
                 if line[-4:] == ".o3d":
                     if os.path.isfile(mesh_path):
                         files.append((mesh_path, current_lod))
@@ -439,7 +439,7 @@ def read_cfg(filepath, override_text_encoding):
             else:
                 cfg_data[current_lod]["cfg_data"][-1].append(line)
 
-    return cfg_data, (folder + "\\")
+    return cfg_data, (folder + os.path.sep)
 
 
 def write_additional_cfg_props(cfg_props, f):

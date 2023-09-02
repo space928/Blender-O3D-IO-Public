@@ -1,5 +1,5 @@
 # ==============================================================================
-#  Copyright (c) 2022 Thomas Mathieson.
+#  Copyright (c) 2022-2023 Thomas Mathieson.
 # ==============================================================================
 
 import os
@@ -20,7 +20,7 @@ def log(*args):
     print("[O3D_Export]", *args)
 
 
-def export_mesh(filepath, context, blender_obj, mesh, transform_matrix, materials, o3d_version):
+def export_mesh(filepath, context, blender_obj, mesh, transform_matrix, materials, o3d_version, export_custom_normals):
     # Create o3d file
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
     with open(filepath, "wb") as f:
@@ -52,10 +52,10 @@ def export_mesh(filepath, context, blender_obj, mesh, transform_matrix, material
                     else:
                         v_uv = (0, 0)
 
-                    if (v_co, v_nrm) in vert_map:
-                        face_inds.append(vert_map[(v_co, v_nrm)])
+                    if (v_co, v_nrm, v_uv) in vert_map:
+                        face_inds.append(vert_map[(v_co, v_nrm, v_uv)])
                     else:
-                        vert_map[(v_co, v_nrm)] = vert_count
+                        vert_map[(v_co, v_nrm, v_uv)] = vert_count
                         verts.append(
                             [v_co[0], v_co[1], v_co[2],
                              v_nrm[0], v_nrm[1], v_nrm[2],
@@ -77,26 +77,32 @@ def export_mesh(filepath, context, blender_obj, mesh, transform_matrix, material
                     tris.append((face_inds[1], face_inds[3], face_inds[2], face.material_index))
         else:
             mesh.calc_loop_triangles()
+            if export_custom_normals and mesh.has_custom_normals:
+                # mesh.polygons.foreach_set("use_smooth", [False] * len(mesh.polygons))
+                mesh.use_auto_smooth = True
+            else:
+                mesh.free_normals_split()
+            mesh.calc_normals_split()
             for tri_loop in mesh.loop_triangles:
                 tri = []
                 tris.append(tri)
 
-                for tri_vert, loop in zip(tri_loop.vertices, tri_loop.loops):
+                for tri_vert, loop, normal in zip(tri_loop.vertices, tri_loop.loops, tri_loop.split_normals):
                     vert = mesh.vertices[tri_vert]
                     v_co = vert.co[:]
-                    v_nrm = vert.normal[:]
+                    v_nrm = mesh.loops[loop].normal[:]
                     if uv_layer is not None:
                         v_uv = uv_layer[loop].uv[:2]
                     else:
                         v_uv = (0, 0)
 
-                    if (v_co, v_nrm) in vert_map:
-                        tri.append(vert_map[(v_co, v_nrm)])
+                    if (v_co, v_nrm, v_uv) in vert_map:
+                        tri.append(vert_map[(v_co, v_nrm, v_uv)])
                     else:
-                        vert_map[(v_co, v_nrm)] = vert_count
+                        vert_map[(v_co, v_nrm, v_uv)] = vert_count
                         verts.append(
                             [v_co[0], v_co[1], v_co[2],
-                             v_nrm[0], v_nrm[1], v_nrm[2],
+                             -v_nrm[0], -v_nrm[1], -v_nrm[2],
                              v_uv[0], 1 - v_uv[1]])
                         tri.append(vert_count)
                         vert_count += 1
@@ -159,7 +165,7 @@ def export_mesh(filepath, context, blender_obj, mesh, transform_matrix, material
                               invert_triangle_winding=True)
 
 
-def do_export(filepath, context, global_matrix, use_selection, o3d_version):
+def do_export(filepath, context, global_matrix, use_selection, o3d_version, export_custom_normals=True):
     """
     Exports the selected CFG/SCO/O3D file
     :param o3d_version: O3D version to export the file as
@@ -224,14 +230,16 @@ def do_export(filepath, context, global_matrix, use_selection, o3d_version):
         ))
 
         if bpy.app.version < (2, 80):
-            o3d_matrix = axis_conversion_matrix * ob.matrix_world
+            o3d_matrix = axis_conversion_matrix * ob.matrix_world * axis_conversion_matrix
         else:
-            o3d_matrix = axis_conversion_matrix @ ob.matrix_world
+            o3d_matrix = axis_conversion_matrix @ ob.matrix_world @ axis_conversion_matrix
         o3d_matrix.transpose()
         me.transform(ob.matrix_world)
         me.transform(axis_conversion_matrix)
         if ob.matrix_world.is_negative:
             me.flip_normals()
+
+        log("Exported matrix: \n{0}".format(o3d_matrix))
 
         bm = bmesh.new()
         bm.from_mesh(me)
@@ -264,7 +272,8 @@ def do_export(filepath, context, global_matrix, use_selection, o3d_version):
         # Export the mesh if it hasn't already been exported
         if path not in exported_paths:
             exported_paths.add(path)
-            export_mesh(path, context, ob_eval, me, [x for y in o3d_matrix for x in y], ob_eval.material_slots, o3d_version)
+            export_mesh(path, context, ob_eval, me, [x for y in o3d_matrix for x in y], ob_eval.material_slots,
+                        o3d_version, export_custom_normals)
 
         index += 1
 

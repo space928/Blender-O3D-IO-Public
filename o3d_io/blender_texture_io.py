@@ -1,5 +1,5 @@
 # ==============================================================================
-#  Copyright (c) 2022 Thomas Mathieson.
+#  Copyright (c) 2022-2023 Thomas Mathieson.
 # ==============================================================================
 
 import os
@@ -29,7 +29,7 @@ class TextureSlotWrapper:
         self.texture = TextureSlotWrapper.TextureWrapper(image)
 
 
-def load_image(base_file_path, texture_path, abs_path=False):
+def find_image_path(base_file_path, texture_path, abs_path=False, find_cfg=False):
     if base_file_path[-3:] == "sco":
         tex_file = os.path.join(os.path.dirname(base_file_path), "texture", texture_path.lower())
     elif base_file_path[-3:] == "map":
@@ -63,10 +63,24 @@ def load_image(base_file_path, texture_path, abs_path=False):
             if os.path.ismount(tex_dir) or last_dir == tex_dir:
                 break
 
+    if find_cfg:
+        tex_file += ".cfg"
+
     if os.path.isfile(tex_file):
+        return tex_file
+    else:
+        return None
+
+
+def load_image(base_file_path, texture_path, abs_path=False):
+    tex_file = find_image_path(base_file_path, texture_path, abs_path, False)
+
+    if tex_file is not None and os.path.isfile(tex_file):
         # TODO: Alpha_8_UNORM DDS files are not supported by Blender
         image = bpy.data.images.load(tex_file,
                                      check_existing=True)
+
+        is_dds = tex_file[:-3] == "dds"
 
         if not image.has_data and is_dds:
             # image.has_data doesn't necessarily mean Blender can't load it (sometimes it's deferred), but there's a

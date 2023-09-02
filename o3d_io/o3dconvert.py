@@ -1,5 +1,5 @@
 # ==============================================================================
-#  Copyright (c) 2022 Thomas Mathieson.
+#  Copyright (c) 2022-2023 Thomas Mathieson.
 # ==============================================================================
 
 import struct
@@ -168,10 +168,10 @@ def import_transform(buff, offset):
     m = struct.unpack_from("<ffffffffffffffff", buff, offset=offset)
     offset += 16 * 4
     return (
-               (m[0], m[4], m[8], m[12]),
-               (m[1], m[5], m[9], m[13]),
-               (m[2], m[6], m[10], m[14]),
-               (m[3], m[7], m[11], m[15])
+               (m[0], m[1], m[2], m[3]),
+               (m[4], m[5], m[6], m[7]),
+               (m[8], m[9], m[10], m[11]),
+               (m[12], m[13], m[14], m[15])
            ), offset
 
 
@@ -217,7 +217,7 @@ def import_o3d(packed_bytes):
             material_list, off = import_material_list(packed_bytes, off, l_header)
             # log("Loaded {0} materials!".format(len(material_list)))
         elif section == 0x54:
-            bone_list, off = import_bone_list(packed_bytes, off, l_header, bonus_header[0] & 1 == 1)
+            bone_list, off = import_bone_list(packed_bytes, off, False, bonus_header[0] & 1 == 1)
             # log("Loaded {0} bones!".format(len(bone_list)))
         elif section == 0x79:
             transform, off = import_transform(packed_bytes, off)

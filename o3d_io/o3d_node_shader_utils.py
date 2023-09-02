@@ -1,11 +1,12 @@
 # ==============================================================================
-#  Copyright (c) 2022 Thomas Mathieson. 
+#  Copyright (c) 2022-2023 Thomas Mathieson.
 # ==============================================================================
 
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 # <pep8 compliant>
 
+import bpy
 from mathutils import Color, Vector
 
 __all__ = (
@@ -914,3 +915,27 @@ class LayeredBSDFWrapper(PrincipledBSDFWrapper):
                 self._mix_node_links.append(node_mix)
 
     base_color_n_textures = property(lambda self: len(self.base_color_textures_get()), base_color_n_textures_set)
+
+
+def generate_solid_material(diffuse, spec=(0, 0, 0), roughness=1):
+    mat_blender = bpy.data.materials.new("solid_mat-{0}".format(diffuse))
+    if bpy.app.version < (2, 80):
+        mat = mat_blender
+        mat.diffuse_color = diffuse[:3]
+        mat.specular_hardness = 1 - roughness
+        mat.specular_intensity = 1
+        mat.specular_color = spec
+        mat.alpha = diffuse[3]
+    else:
+        mat_blender.use_nodes = True
+        mat = PrincipledBSDFWrapper(mat_blender, is_readonly=False)
+        mat.base_color = diffuse[:3]
+        mat.specular = spec[0]
+        mat.roughness = roughness
+        mat.alpha = diffuse[3]
+
+        mat_blender.use_backface_culling = True
+        mat_blender.blend_method = "HASHED"
+        mat_blender.shadow_method = "HASHED"
+
+    return mat_blender

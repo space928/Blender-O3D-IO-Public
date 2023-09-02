@@ -1,5 +1,5 @@
 # ==============================================================================
-#  Copyright (c) 2022 Thomas Mathieson.
+#  Copyright (c) 2022-2023 Thomas Mathieson.
 # ==============================================================================
 
 # ##### BEGIN GPL LICENSE BLOCK #####
@@ -24,7 +24,7 @@
 bl_info = {
     "name": "Import OMSI map/cfg/sco/o3d files",
     "author": "Adam/Thomas Mathieson",
-    "version": (1, 1, 4),
+    "version": (1, 2, 2),
     "blender": (3, 1, 0),
     "location": "File > Import-Export",
     "description": "Import OMSI model .map, .cfg, .sco, and .o3d files along with their meshes, UVs, and materials",
@@ -35,7 +35,7 @@ bl_info = {
     "category": "Import-Export"
 }
 
-from .o3d_io import io_o3d_import, io_o3d_export, io_omsi_tile
+from .o3d_io import io_o3d_import, io_o3d_export, io_omsi_tile, io_omsi_map_panel
 import bpy
 from mathutils import Matrix
 
@@ -91,6 +91,13 @@ class ImportModelCFG(bpy.types.Operator, ImportHelper):
     # ImportHelper mixin class uses this
     filename_ext = ".o3d"
 
+    import_custom_normals = BoolProperty(
+        name="Import custom normals",
+        description="Import the mesh normals as Blender custom split normals. This allows the original normal data to "
+                    "be preserved correctly but can be harder to edit later.",
+        default=True
+    )
+
     filter_glob = StringProperty(
         default="*.cfg;*.sco;*.o3d;*.rdy",
         options={'HIDDEN'},
@@ -120,6 +127,13 @@ class ImportModelCFG(bpy.types.Operator, ImportHelper):
         default=True,
     )
 
+    parent_collection = StringProperty(
+        name="Parent collection (leave blank for default)",
+        description="When set, this will place all the imported objects in the specified collection. If a collection "
+                    "with the specified name does not exist, it will be created.",
+        default=""
+    )
+
     # Selected files
     files = CollectionProperty(type=bpy.types.PropertyGroup)
 
@@ -130,7 +144,25 @@ class ImportModelCFG(bpy.types.Operator, ImportHelper):
         :return: success message
         """
         context.window.cursor_set('WAIT')
-        io_o3d_import.do_import(self.filepath, context, self.import_x, self.override_text_encoding, self.hide_lods)
+
+        # Find or create the parent collection
+        parent_collection = None
+        if self.parent_collection != "":
+            if bpy.app.version < (2, 80):
+                if self.parent_collection not in bpy.data.groups:
+                    parent_collection = bpy.data.groups.new(self.parent_collection)
+                else:
+                    parent_collection = bpy.data.groups[self.parent_collection]
+            else:
+                if self.parent_collection not in bpy.data.collections:
+                    parent_collection = bpy.data.collections.new(self.parent_collection)
+                    bpy.context.scene.collection.children.link(parent_collection)
+                else:
+                    parent_collection = bpy.data.collections[self.parent_collection]
+
+        io_o3d_import.do_import(self.filepath, context, self.import_x, self.override_text_encoding, self.hide_lods,
+                                import_lods=True, parent_collection=parent_collection,
+                                split_normals=self.import_custom_normals)
         context.window.cursor_set('DEFAULT')
 
         return {'FINISHED'}
@@ -149,6 +181,12 @@ class ExportModelCFG(bpy.types.Operator, ExportHelper):
     filter_glob = StringProperty(
         default="*.cfg;*.sco;*.o3d",
         options={'HIDDEN'},
+    )
+    export_custom_normals = BoolProperty(
+        name="Export custom normals",
+        description="Export Blender custom split normals as the mesh normals. This allows for higher fidelity normals "
+                    "to be exported.",
+        default=True
     )
     use_selection = BoolProperty(
         name="Selection Only",
@@ -172,7 +210,8 @@ class ExportModelCFG(bpy.types.Operator, ExportHelper):
         context.window.cursor_set('WAIT')
 
         global_matrix = Matrix.Scale(self.global_scale, 4)
-        io_o3d_export.do_export(self.filepath, context, global_matrix, self.use_selection, self.o3d_version)
+        io_o3d_export.do_export(self.filepath, context, global_matrix, self.use_selection, self.o3d_version,
+                                self.export_custom_normals)
 
         context.window.cursor_set('DEFAULT')
 
@@ -238,6 +277,25 @@ class ImportOMSITile(bpy.types.Operator, ImportHelper):
         default=True,
     )
 
+    centre_x = IntProperty(
+        name="Centre Tile X",
+        description="When loading a global.cfg file, the x coordinate of the first tile to load.",
+        default=0
+    )
+    centre_y = IntProperty(
+        name="Centre Tile Y",
+        description="When loading a global.cfg file, the y coordinate of the first tile to load.",
+        default=0
+    )
+    load_radius = IntProperty(
+        name="Load Radius",
+        description="When loading a global.cfg file, how many tiles around the centre tile to load. Set to 0 to only "
+                    "load the centre tile, 1 loads the centre tile and it's 4 neighbours, 2 loads the centre tile and "
+                    "it's 8 neighbours...",
+        default=999999,
+        min=0
+    )
+
     # Selected files
     files = CollectionProperty(type=bpy.types.PropertyGroup)
 
@@ -249,7 +307,7 @@ class ImportOMSITile(bpy.types.Operator, ImportHelper):
         """
         context.window.cursor_set('WAIT')
         io_omsi_tile.do_import(context, self.filepath, self.import_scos, self.import_splines, self.spline_tess_dist,
-                               self.spline_curve_sag, self.import_x)
+                               self.spline_curve_sag, self.import_x, self.centre_x, self.centre_y, self.load_radius)
         context.window.cursor_set('DEFAULT')
 
         return {'FINISHED'}
@@ -275,9 +333,17 @@ classes = [
 
 
 def register():
-    for cls in classes:
-        cls = make_annotations(cls)
-        bpy.utils.register_class(cls)
+    all_classes = classes[:]
+    all_classes.extend(io_omsi_map_panel.get_classes())
+    log("Registering Blender-O3D-IO version: {0}...".format(bl_info["version"]))
+    for cls in all_classes:
+        try:
+            cls = make_annotations(cls)
+            bpy.utils.register_class(cls)
+        except:
+            log("Failed to register {0}".format(cls))
+
+    io_omsi_map_panel.register()
 
     # Compat with 2.7x and 3.x
     if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:
@@ -291,8 +357,15 @@ def register():
 
 
 def unregister():
-    for cls in classes:
-        bpy.utils.unregister_class(cls)
+    all_classes = classes[:]
+    all_classes.extend(io_omsi_map_panel.get_classes())
+    for cls in all_classes[::-1]:
+        try:
+            bpy.utils.unregister_class(cls)
+        except:
+            log("Failed to unregister {0}".format(cls))
+
+    io_omsi_map_panel.unregister()
 
     # Compat with 2.7x and 3.x
     if bpy.app.version[0] < 3 and bpy.app.version[1] < 80:

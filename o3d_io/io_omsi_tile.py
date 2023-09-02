@@ -1,3 +1,7 @@
+# ==============================================================================
+#  Copyright (c) 2023 Thomas Mathieson.
+# ==============================================================================
+
 import math
 import os.path
 import time
@@ -5,17 +9,20 @@ import time
 import bpy
 import struct
 
-from . import o3d_node_shader_utils, io_omsi_spline
+import mathutils
+from . import o3d_node_shader_utils, io_omsi_spline, io_o3d_import
 from .blender_texture_io import load_texture_into_new_slot
+from .o3d_cfg_parser import read_generic_cfg_file
 
 
 def log(*args):
     print("[OMSI_Tile_Import]", *args)
 
 
-def do_import(context, filepath, import_scos, import_splines, spline_tess_dist, spline_tess_angle, import_x):
+def do_import(context, filepath, import_scos, import_splines, spline_tess_dist, spline_tess_angle, import_x,
+              centre_x, centre_y, load_radius):
     # Read global.cfg
-    global_cfg = read_cfg_file(os.path.join(os.path.dirname(filepath), "global.cfg"))
+    global_cfg = read_generic_cfg_file(os.path.join(os.path.dirname(filepath), "global.cfg"))
 
     if filepath[-3:] == "map":
         import_tile(context, filepath, import_scos, global_cfg, import_splines, spline_tess_dist, spline_tess_angle,
@@ -25,23 +32,33 @@ def do_import(context, filepath, import_scos, import_splines, spline_tess_dist, 
         working_dir = os.path.dirname(filepath)
         objs = []
         tiles = 0
+        loaded_objs_cache = {}
         for map_file in global_cfg["[map]"]:
             x = int(map_file[0])
             y = int(map_file[1])
             path = map_file[2]
 
+            diff = (centre_x - x, centre_y - y)
+            dist = math.sqrt(diff[0]*diff[0] + diff[1] * diff[1])
+            if dist > load_radius*0.5+0.5:
+                continue
+
             log("### Loading " + path)
 
-            import_tile(context, os.path.join(working_dir, path), import_scos, global_cfg, import_splines,
-                        spline_tess_dist, spline_tess_angle, import_x)
+            tile_objs = import_tile(context, os.path.join(working_dir, path), import_scos, global_cfg, import_splines,
+                                    spline_tess_dist, spline_tess_angle, import_x, loaded_objs_cache)
+
+            bpy.ops.object.select_all(action='DESELECT')
+            if bpy.app.version < (2, 80):
+                for o in tile_objs:
+                    if o.parent is None:
+                        o.select = True
+            else:
+                for o in tile_objs:
+                    if o.parent is None:
+                        o.select_set(True)
 
             bpy.ops.transform.translate(value=(x * 300, y * 300, 0))
-
-            collection = bpy.data.collections.new(path)
-            bpy.context.scene.collection.children.link(collection)
-
-            for o in bpy.context.selected_objects:
-                collection.objects.link(o)
 
             objs.extend(bpy.context.selected_objects)
             bpy.ops.object.select_all(action='DESELECT')
@@ -52,34 +69,45 @@ def do_import(context, filepath, import_scos, import_splines, spline_tess_dist, 
 
 
 def import_tile(context, filepath, import_scos, global_cfg, import_splines, spline_tess_dist, spline_tess_angle,
-                import_x):
+                import_x, loaded_objs_cache=None):
     start_time = time.time()
 
-    map_file = read_cfg_file(filepath)
+    if bpy.app.version < (2, 80):
+        collection = bpy.data.groups.new(os.path.basename(filepath[:-4]))
+    else:
+        collection = bpy.data.collections.new(os.path.basename(filepath[:-4]))
+        bpy.context.scene.collection.children.link(collection)
+
+    map_file = read_generic_cfg_file(filepath)
 
     # Make terrain mesh
     terrain_obj, terr_heights = import_terrain_mesh(filepath, global_cfg)
 
     blender_insts = []
-    if import_scos:
-        blender_insts = import_map_objects(filepath, map_file, terr_heights, import_x)
-
+    spline_defs = None
     if import_splines:
-        blender_insts.extend(io_omsi_spline.import_map_splines(filepath, map_file, spline_tess_dist, spline_tess_angle))
+        splines = io_omsi_spline.import_map_splines(filepath, map_file, spline_tess_dist, spline_tess_angle, collection)
+        blender_insts.extend(splines[0])
+        spline_defs = splines[1]
+    else:
+        spline_defs = io_omsi_spline.load_spline_defs(map_file)
+
+    if import_scos:
+        blender_insts.extend(import_map_objects(filepath, map_file, terr_heights, import_x, collection,
+                                                spline_defs, loaded_objs_cache))
+
+    blender_insts.append(terrain_obj)
 
     # Make collection
     if bpy.app.version < (2, 80):
-        scene = bpy.context.scene
-        scene.objects.link(terrain_obj)
-    else:
-        view_layer = context.view_layer
-        collection = view_layer.active_layer_collection.collection
-        collection.objects.link(terrain_obj)
+        bpy.context.scene.objects.link(terrain_obj)
+
+    collection.objects.link(terrain_obj)
 
     bpy.ops.object.select_all(action='DESELECT')
 
     if bpy.app.version < (2, 80):
-        terrain_obj = True
+        terrain_obj.select = True
         bpy.ops.object.shade_smooth()
         for o in blender_insts:
             o.select = True
@@ -89,39 +117,10 @@ def import_tile(context, filepath, import_scos, global_cfg, import_splines, spli
         for o in blender_insts:
             o.select_set(True)
 
+    bpy.data.scenes[context.scene.name]["map_data"] = map_file
+
     log("Loaded tile {0} in {1} seconds!".format(filepath, time.time() - start_time))
-
-
-def read_cfg_file(cfg_path):
-    with open(cfg_path, 'r', encoding="utf-16-le", errors="replace") as f:
-        lines = [l.rstrip() for l in f.readlines()]
-
-    cfg_data = {}
-
-    current_command = None
-    param_ind = -1
-    for i, line in enumerate(lines):
-        if len(line) > 2 and line[0] == "[" and line[-1] == "]":
-            current_command = line
-            param_ind = -1
-        else:
-            param_ind += 1
-
-        # if current_command == "[LOD]":
-        #     if param_ind == 0:
-        #         current_lod = (float(line), i)
-
-        if current_command is not None:
-            # Current command is not currently parsed
-            if param_ind == -1:
-                if current_command in cfg_data:
-                    cfg_data[current_command].append([])
-                else:
-                    cfg_data[current_command] = [[]]
-            if param_ind >= 0:
-                cfg_data[current_command][-1].append(line)
-
-    return cfg_data
+    return blender_insts
 
 
 def is_int(x):
@@ -289,65 +288,269 @@ def get_interpolated_height(terr_heights, x, y):
     return lerp(il, ih, y_frac)
 
 
-def import_map_objects(filepath, map_file, terr_heights, import_x):
-    objs = []
+def import_map_objects(filepath, map_file, terr_heights, import_x, parent_collection, spline_defs, loaded_objs=None):
+    if loaded_objs is None:
+        loaded_objs = {}
     blender_insts = []
 
     omsi_dir = os.path.abspath(os.path.join(os.path.dirname(filepath), os.pardir, os.pardir))
     # log("Assuming OMSI directory of: ", omsi_dir)
 
-    if "[object]" not in map_file:
-        return blender_insts
-
-    for lines in map_file["[object]"]:
-        path = lines[1]
-        obj_id = int(lines[2])
-        pos = [float(lines[3 + x]) for x in range(3)]
-        rot = [float(lines[6 + x]) for x in range(3)]  # ZYX (Z-Up)
-
-        objs.append({"path": os.path.join(omsi_dir, path), "id": obj_id, "pos": pos, "rot": rot})
+    objs = parse_map_data(map_file, omsi_dir)
 
     log("Loaded {0} objects!".format(len(objs)))
 
-    loaded_objs = {}
     for obj in objs:
-        pos = obj["pos"]
+        pos = mathutils.Vector(obj["pos"])
         path = obj["path"]
-        rot = [-x / 180 * 3.14159265 for x in obj["rot"]]
+        rot = mathutils.Vector([-math.radians(x) for x in obj["rot"]]).zyx
+        obj_name = os.path.basename(path)[:-4]
+
+        if "spline" in obj:
+            # Weird edge case in OMSI where spline_attachments with a negative spline distance
+            if pos.z < 0 or pos.z > spline_defs[obj["spline"]].length:
+                continue
 
         if path in loaded_objs:
             # Save time by duplicating existing objects
-            if bpy.app.version < (2, 80):
-                for o in bpy.context.selected_objects:
-                    o.select = False
-                for o in loaded_objs[path]:
-                    o.select = True
-            else:
-                for o in bpy.context.selected_objects:
-                    o.select_set(False)
-                for o in loaded_objs[path]:
-                    o.select_set(True)
-            # TODO: Replace this with a low level method to prevent slow down
-            # See: https://blenderartists.org/t/python-slowing-down-over-time/569534
-            bpy.ops.object.duplicate_move_linked()
-
+            container_obj, new_objs = clone_object(loaded_objs, obj_name, parent_collection, path)
+            blender_insts.extend(new_objs)
         else:
             # bpy.ops.mesh.primitive_cube_add(location=pos)
+            imported_objs = []
             try:
-                bpy.ops.import_scene.omsi_model_cfg(filepath=path, import_x=import_x)
+                imported_objs = io_o3d_import.do_import(path, bpy.context, import_x, "", True, False, parent_collection)
             except:
                 log("Exception encountered loading: " + path)
 
-            loaded_objs[path] = [o for o in bpy.context.selected_objects]
+            container_obj = bpy.data.objects.new(obj_name, None)
+            parent_collection.objects.link(container_obj)
 
-        if len(bpy.context.selected_objects) > 0:
-            if "[surface]" in bpy.context.selected_objects[0].data \
-                    and not bpy.context.selected_objects[0].data["[surface]"]:
-                pos[2] += get_interpolated_height(terr_heights, pos[0], pos[1])
+            loaded_objs[path] = [o for o in imported_objs]
+            for o in imported_objs:
+                o.parent = container_obj
 
-        for loaded in bpy.context.selected_objects:
-            loaded.location = pos
-            loaded.rotation_euler = rot[::-1]
-            blender_insts.append(loaded)
+            imported_objs.append(container_obj)
+
+            blender_insts.extend(imported_objs)
+
+        align_tangent = "tangent_to_spline" in obj
+        if obj["tree_data"] is not None:
+            # TODO: Handle tree replacement
+            container_obj["tree_data"] = obj["tree_data"]
+        if "attach" in obj:
+            container_obj["attach"] = obj["attach"]
+
+        # TODO: Copy across any [object] specific parameters to the container bl_object
+
+        if "spline" in obj:
+            container_obj["cfg_data"] = obj
+            container_obj["spline_id"] = spline_defs[obj["spline"]].id
+            container_obj["rep_distance"] = obj["rep_distance"]
+            container_obj["rep_range"] = obj["rep_range"]
+            container_obj["tangent_to_spline"] = obj["tangent_to_spline"]
+            if "repeater_x" in obj:
+                container_obj["repeater_x"] = obj["repeater_x"]
+                container_obj["repeater_y"] = obj["repeater_y"]
+            # log(f"Rep {obj['id']} {obj['rep_distance']} {obj['rep_range']}\t:::")
+            d = obj["rep_distance"]
+            while d < obj["rep_range"] and (d + pos.z < spline_defs[obj["spline"]].length):
+                # Clone the object and transform it
+                container_obj_rep, new_objs = clone_object(loaded_objs, obj_name, parent_collection, path)
+                blender_insts.extend(new_objs)
+
+                pos_s = pos.xzy
+                pos_s += mathutils.Vector((0, d, 0))
+                pos_rep, spl_rot = spline_defs[obj["spline"]].evaluate_spline(pos_s, True, True)
+                if align_tangent:
+                    spl_rot.x = -spl_rot.x
+                    spl_rot.y = -spl_rot.y
+                else:
+                    spl_rot.x = 0
+                    spl_rot.y = 0
+
+                # log(f"\t\t inst:{pos_s} -> {pos_rep}")
+                container_obj_rep.location = pos_rep
+                container_obj_rep.rotation_euler = rot + spl_rot
+                container_obj_rep["rep_parent"] = obj
+
+                d += obj["rep_distance"]
+
+            # Position is relative to the spline
+            pos, spl_rot = spline_defs[obj["spline"]].evaluate_spline(pos.xzy, True, True)
+            if align_tangent:
+                spl_rot.x = -spl_rot.x
+                spl_rot.y = -spl_rot.y
+            else:
+                spl_rot.x = 0
+                spl_rot.y = 0
+            rot += spl_rot
+        else:
+            pos.z += get_interpolated_height(terr_heights, pos.x, pos.y)
+
+        container_obj.location = pos
+        container_obj.rotation_euler = rot
 
     return blender_insts
+
+
+def clone_object(loaded_objs, obj_name, parent_collection, path):
+    blender_insts = []
+    if bpy.app.version < (2, 80):
+        container_obj = bpy.data.objects.new(obj_name, None)
+        parent_collection.objects.link(container_obj)
+        blender_insts.append(container_obj)
+        for o in loaded_objs[path]:
+            cop = o.copy()
+            bpy.context.scene.objects.link(cop)
+            parent_collection.objects.link(cop)
+            cop.parent = container_obj
+            blender_insts.append(cop)
+    else:
+        container_obj = bpy.data.objects.new(obj_name, None)
+        parent_collection.objects.link(container_obj)
+        blender_insts.append(container_obj)
+        for o in loaded_objs[path]:
+            cop = o.copy()
+            parent_collection.objects.link(cop)
+            cop.parent = container_obj
+            blender_insts.append(cop)
+    return container_obj, blender_insts
+
+
+def parse_map_data(map_file, omsi_dir):
+    objs = []
+
+    if "[object]" in map_file:
+        for lines in map_file["[object]"]:
+            # I'm not sure what line 0, it's almost always a 0, rarely it's a 1 and only on Berlin is it ever 2
+            path = lines[1]
+            obj_id = int(lines[2])
+            pos = [float(lines[3 + x]) for x in range(3)]
+            rot = [float(lines[6 + x]) for x in range(3)]  # ZYX (Z-Up)
+
+            try:
+                obj_type = int(lines[9])
+            except ValueError:
+                obj_type = 0
+
+            tree_data = None
+            if obj_type == 4:
+                tree_data = {
+                    "texture": lines[10],
+                    "height": float(lines[11]),
+                    "aspect": float(lines[12])
+                }
+            elif obj_type == 7:
+                pass  # Bus stop
+            elif obj_type == 1:
+                pass  # Label
+
+            objs.append({
+                "cfg_type": "object",
+                "path": os.path.join(omsi_dir, path),
+                "id": obj_id,
+                "pos": pos, "rot": rot,
+                "tree_data": tree_data
+            })
+
+    if "[attachObj]" in map_file:
+        for lines in map_file["[attachObj]"]:
+            path = lines[1]
+            obj_id = int(lines[2])
+            pos = [float(lines[4 + x]) for x in range(3)]
+            rot = [float(lines[5 + x]) for x in range(3)]  # ZYX (Z-Up)
+
+            try:
+                obj_type = int(lines[10])
+            except ValueError:
+                obj_type = 0
+
+            tree_data = None
+            if obj_type == 4:
+                tree_data = {
+                    "cfg_type": "attachObj",
+                    "texture": lines[11],
+                    "height": float(lines[12]),
+                    "aspect": float(lines[13])
+                }
+            elif obj_type == 7:
+                pass  # Bus stop
+            elif obj_type == 1:
+                pass  # Label
+
+            objs.append({
+                "path": os.path.join(omsi_dir, path),
+                "id": obj_id,
+                "pos": pos, "rot": rot,
+                "tree_data": tree_data,
+                "attach": int(lines[3])
+            })
+
+    if "[splineAttachement]" in map_file:
+        for lines in map_file["[splineAttachement]"]:
+            try:
+                obj_type = int(lines[13])
+            except ValueError:
+                obj_type = 0
+
+            tree_data = None
+            if obj_type == 4:
+                tree_data = {
+                    "texture": lines[14],
+                    "height": float(lines[15]),
+                    "aspect": float(lines[16])
+                }
+            elif obj_type == 7:
+                pass  # Bus stop
+            elif obj_type == 1:
+                pass  # Label
+
+            objs.append({
+                "cfg_type": "splineAttachement",
+                "path": os.path.join(omsi_dir, lines[1]),
+                "id": int(lines[2]),
+                "pos": [float(lines[4 + x]) for x in range(3)],
+                "rot": [float(lines[7 + x]) for x in range(3)],
+                "tree_data": tree_data,
+                "spline": int(lines[3]),
+                "rep_distance": float(lines[10]),
+                "rep_range": float(lines[11]),
+                "tangent_to_spline": int(lines[12]) == 1
+            })
+
+    if "[splineAttachement_repeater]" in map_file:
+        for lines in map_file["[splineAttachement_repeater]"]:
+            try:
+                obj_type = int(lines[15])
+            except ValueError:
+                obj_type = 0
+
+            tree_data = None
+            if obj_type == 4:
+                tree_data = {
+                    "texture": lines[16],
+                    "height": float(lines[17]),
+                    "aspect": float(lines[18])
+                }
+            elif obj_type == 7:
+                pass  # Bus stop
+            elif obj_type == 1:
+                pass  # Label
+
+            objs.append({
+                "cfg_type": "splineAttachement_repeater",
+                "path": os.path.join(omsi_dir, lines[3]),
+                "id": int(lines[4]),
+                "pos": [float(lines[6 + x]) for x in range(3)],
+                "rot": [float(lines[9 + x]) for x in range(3)],
+                "tree_data": tree_data,
+                "spline": int(lines[5]),
+                "rep_distance": float(lines[12]),
+                "rep_range": float(lines[13]),
+                "tangent_to_spline": int(lines[14]) == 1,
+                "repeater_x": int(lines[1]),  # I still don't know what these do
+                "repeater_y": int(lines[2]),  # I still don't know what these do
+            })
+
+    return objs

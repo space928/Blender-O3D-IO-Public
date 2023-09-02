@@ -1,5 +1,5 @@
 # ==============================================================================
-#  Copyright (c) 2022 Thomas Mathieson.
+#  Copyright (c) 2022-2023 Thomas Mathieson.
 # ==============================================================================
 import math
 import os
@@ -13,6 +13,56 @@ if bpy.app.version > (2, 80):
 
 def log(*args):
     print("[O3D_CFG_Parser]", *args)
+
+
+def read_generic_cfg_file(cfg_path):
+    """
+    Loads and parses a generic cfg file into a dictionary
+    :param cfg_path: the absolute file path to load the cfg from
+    :return: a dict with the cfg command (including square brackets) as the key and a list of instances (which are
+             lists of lines) as values
+    """
+    try:
+        with open(cfg_path, 'r', encoding="utf-8") as f:
+            lines = [l.rstrip() for l in f.readlines()]
+    except:
+        with open(cfg_path, 'r', encoding="utf-16-le", errors="replace") as f:
+            lines = [l.rstrip() for l in f.readlines()]
+
+    cfg_data = {}
+
+    current_command = None
+    current_command_start = None
+    param_ind = -1
+    for i, line in enumerate(lines):
+        if len(line) > 2 and line[0] == "[" and line[-1] == "]":
+            # Append the line number to the end of the arguments list for order sensitive commands
+            if current_command is not None:
+                cfg_data[current_command][-1].append(current_command_start)
+                cfg_data[current_command][-1].append(current_command)
+
+            current_command = line
+            current_command_start = str(i)
+            param_ind = -1
+        else:
+            param_ind += 1
+
+        if current_command is not None:
+            # Current command is not currently parsed
+            if param_ind == -1:
+                if current_command in cfg_data:
+                    cfg_data[current_command].append([])
+                else:
+                    cfg_data[current_command] = [[]]
+            if param_ind >= 0:
+                cfg_data[current_command][-1].append(line)
+
+    # Append the line number to the end of the arguments list for order sensitive commands
+    if current_command is not None:
+        cfg_data[current_command][-1].append(current_command_start)
+        cfg_data[current_command][-1].append(current_command)
+
+    return cfg_data
 
 
 def read_cfg(filepath, override_text_encoding):
@@ -45,8 +95,7 @@ def read_cfg(filepath, override_text_encoding):
     """
     # get the folder
     folder = (os.path.dirname(filepath))
-    if filepath[-3:] == "sco":
-        folder = os.path.join(folder, "model")
+    folder_model = os.path.join(folder, "model")
 
     # log("Loading " + filepath)
     encoding = override_text_encoding if override_text_encoding.strip() != "" else "1252"
@@ -62,10 +111,13 @@ def read_cfg(filepath, override_text_encoding):
         -1: {
             "meshes": {},
             "surface": False,
-            "cfg_data": []
+            "cfg_data": [],
+            "maplights": [],
+            "light_flares": [],
+            "interior_lights": [],
+            "spotlights": [],
         }
     }
-    files = []
     lights = []
 
     current_command = None
@@ -75,7 +127,8 @@ def read_cfg(filepath, override_text_encoding):
     param_ind = -1
     interior_light_ind = 0
     spotlight_ind = 0
-    for i, line in enumerate(lines):
+    iter_lines = iter(enumerate(lines))
+    for i, line in iter_lines:
         if len(line) > 2 and line[0] == "[" and line[-1] == "]":
             current_command = line
             param_ind = -1
@@ -90,7 +143,11 @@ def read_cfg(filepath, override_text_encoding):
                 cfg_data[current_lod] = {
                     "meshes": {},
                     "surface": False,
-                    "cfg_data": []
+                    "cfg_data": [],
+                    "maplights": [],
+                    "light_flares": [],
+                    "interior_lights": [],
+                    "spotlights": [],
                 }
 
         elif current_command == "[groups]":
@@ -108,24 +165,41 @@ def read_cfg(filepath, override_text_encoding):
         elif current_command == "[surface]":
             cfg_data[current_lod]["surface"] = True
 
+        elif current_command == "[editor_only]":
+            cfg_data[current_lod]["editor_only"] = True
+
+        elif current_command == "[maplight]":
+            if param_ind == -1:
+                cfg_data[current_lod]["maplights"].append({})
+                cfg_data[current_lod]["maplights"][-1]["x"] = float(next(iter_lines)[1])
+                cfg_data[current_lod]["maplights"][-1]["y"] = float(next(iter_lines)[1])
+                cfg_data[current_lod]["maplights"][-1]["z"] = float(next(iter_lines)[1])
+                cfg_data[current_lod]["maplights"][-1]["r"] = float(next(iter_lines)[1])
+                cfg_data[current_lod]["maplights"][-1]["g"] = float(next(iter_lines)[1])
+                cfg_data[current_lod]["maplights"][-1]["b"] = float(next(iter_lines)[1])
+                cfg_data[current_lod]["maplights"][-1]["range"] = float(next(iter_lines)[1])
+                lights.append(cfg_data[current_lod]["maplights"][-1])
+
+        elif current_command == "[tree]":
+            if param_ind == -1:
+                cfg_data[current_lod]["tree"] = {}
+                cfg_data[current_lod]["tree"]["texture"] = next(iter_lines)[1]
+                cfg_data[current_lod]["tree"]["min_height"] = float(next(iter_lines)[1])
+                cfg_data[current_lod]["tree"]["max_height"] = float(next(iter_lines)[1])
+                cfg_data[current_lod]["tree"]["min_aspect"] = float(next(iter_lines)[1])
+                cfg_data[current_lod]["tree"]["max_aspect"] = float(next(iter_lines)[1])
+
         elif current_command == "[mesh]":
             if param_ind == 0:
                 current_mat = None
                 mesh_path = os.path.join(folder, line)
-                if line[-4:] == ".o3d":
-                    if os.path.isfile(mesh_path):
-                        files.append((mesh_path, current_lod))
-                if line[-2:] == ".x":
-                    if os.path.isfile(mesh_path):
-                        files.append((mesh_path, current_lod))
+                if not os.path.isfile(mesh_path):
+                    mesh_path = os.path.join(folder_model, line)
                 current_mesh = line
 
                 cfg_data[current_lod]["meshes"][current_mesh] = {
                     "path": mesh_path,
                     "matls": {},
-                    "light_flares": [],
-                    "interior_lights": {},
-                    "spotlights": {},
                     "cfg_data": []
                 }
 
@@ -136,144 +210,83 @@ def read_cfg(filepath, override_text_encoding):
         elif current_command == "[interiorlight]":
             if param_ind == -1:
                 interior_light_ind += 1
-                cfg_data[current_lod]["meshes"][current_mesh]["interior_lights"][interior_light_ind] = {}
-
-                lights.append(cfg_data[current_lod]["meshes"][current_mesh]["interior_lights"][interior_light_ind])
-
-            m_light = cfg_data[current_lod]["meshes"][current_mesh]["interior_lights"][interior_light_ind]
-            if param_ind == 0:
-                m_light["variable"] = line
-            elif param_ind == 1:
-                m_light["range"] = float(line)
-            elif param_ind == 2:
-                m_light["red"] = float(line) / 255
-            elif param_ind == 3:
-                m_light["green"] = float(line) / 255
-            elif param_ind == 4:
-                m_light["blue"] = float(line) / 255
-            elif param_ind == 5:
-                m_light["x_pos"] = float(line)
-            elif param_ind == 6:
-                m_light["y_pos"] = float(line)
-            elif param_ind == 7:
-                m_light["z_pos"] = float(line)
+                cfg_data[current_lod]["interior_lights"].append({})
+                lights.append(cfg_data[current_lod]["interior_lights"][-1])
+                cfg_data[current_lod]["interior_lights"][-1]["variable"] = next(iter_lines)[1]
+                cfg_data[current_lod]["interior_lights"][-1]["range"] = float(next(iter_lines)[1])
+                cfg_data[current_lod]["interior_lights"][-1]["red"] = float(next(iter_lines)[1]) / 255
+                cfg_data[current_lod]["interior_lights"][-1]["green"] = float(next(iter_lines)[1]) / 255
+                cfg_data[current_lod]["interior_lights"][-1]["blue"] = float(next(iter_lines)[1]) / 255
+                cfg_data[current_lod]["interior_lights"][-1]["x_pos"] = float(next(iter_lines)[1])
+                cfg_data[current_lod]["interior_lights"][-1]["y_pos"] = float(next(iter_lines)[1])
+                cfg_data[current_lod]["interior_lights"][-1]["z_pos"] = float(next(iter_lines)[1])
 
         elif current_command == "[spotlight]":
             if param_ind == -1:
                 spotlight_ind += 1
-                cfg_data[current_lod]["meshes"][current_mesh]["spotlights"][spotlight_ind] = {}
+                cfg_data[current_lod]["spotlights"].append({})
+                lights.append(cfg_data[current_lod]["spotlights"][-1])
 
-                lights.append(cfg_data[current_lod]["meshes"][current_mesh]["spotlights"][spotlight_ind])
-
-            m_light = cfg_data[current_lod]["meshes"][current_mesh]["spotlights"][spotlight_ind]
-            if param_ind == 0:
-                m_light["x_pos"] = float(line)
-            elif param_ind == 1:
-                m_light["y_pos"] = float(line)
-            elif param_ind == 2:
-                m_light["z_pos"] = float(line)
-            elif param_ind == 3:
-                m_light["x_fwd"] = float(line)
-            elif param_ind == 4:
-                m_light["y_fwd"] = float(line)
-            elif param_ind == 5:
-                m_light["z_fwd"] = float(line)
-            elif param_ind == 6:
-                m_light["col_r"] = float(line) / 255
-            elif param_ind == 7:
-                m_light["col_g"] = float(line) / 255
-            elif param_ind == 8:
-                m_light["col_b"] = float(line) / 255
-            elif param_ind == 9:
-                m_light["range"] = float(line)
-            elif param_ind == 10:
-                m_light["inner_angle"] = float(line)
-            elif param_ind == 11:
-                m_light["outer_angle"] = float(line)
+                m_light = cfg_data[current_lod]["spotlights"][-1]
+                m_light["x_pos"] = float(next(iter_lines)[1])
+                m_light["y_pos"] = float(next(iter_lines)[1])
+                m_light["z_pos"] = float(next(iter_lines)[1])
+                m_light["x_fwd"] = float(next(iter_lines)[1])
+                m_light["y_fwd"] = float(next(iter_lines)[1])
+                m_light["z_fwd"] = float(next(iter_lines)[1])
+                m_light["col_r"] = float(next(iter_lines)[1]) / 255
+                m_light["col_g"] = float(next(iter_lines)[1]) / 255
+                m_light["col_b"] = float(next(iter_lines)[1]) / 255
+                m_light["range"] = float(next(iter_lines)[1])
+                m_light["inner_angle"] = float(next(iter_lines)[1])
+                m_light["outer_angle"] = float(next(iter_lines)[1])
 
         elif current_command == "[light_enh]":
             if param_ind == -1:
-                cfg_data[current_lod]["meshes"][current_mesh]["light_flares"].append({"type": "[light_enh]"})
-            light_flare = cfg_data[current_lod]["meshes"][current_mesh]["light_flares"][-1]
-            if param_ind == 0:
-                light_flare["x_pos"] = float(line)
-            elif param_ind == 1:
-                light_flare["y_pos"] = float(line)
-            elif param_ind == 2:
-                light_flare["z_pos"] = float(line)
-            elif param_ind == 3:
-                light_flare["col_r"] = float(line) / 255
-            elif param_ind == 4:
-                light_flare["col_g"] = float(line) / 255
-            elif param_ind == 5:
-                light_flare["col_b"] = float(line) / 255
-            elif param_ind == 6:
-                light_flare["size"] = float(line)
-            elif param_ind == 7:
-                light_flare["brightness_var"] = line
-            elif param_ind == 8:
-                light_flare["brightness"] = float(line)
-            elif param_ind == 9:
-                light_flare["z_offset"] = float(line)
-            elif param_ind == 10:
-                light_flare["effect"] = int(line)
-            elif param_ind == 11:
-                light_flare["ramp_time"] = float(line)
-            elif param_ind == 12:
-                light_flare["texture"] = line
+                cfg_data[current_lod]["light_flares"].append({"type": "[light_enh]"})
+                light_flare = cfg_data[current_lod]["light_flares"][-1]
+                light_flare["x_pos"] = float(next(iter_lines)[1])
+                light_flare["y_pos"] = float(next(iter_lines)[1])
+                light_flare["z_pos"] = float(next(iter_lines)[1])
+                light_flare["col_r"] = float(next(iter_lines)[1]) / 255
+                light_flare["col_g"] = float(next(iter_lines)[1]) / 255
+                light_flare["col_b"] = float(next(iter_lines)[1]) / 255
+                light_flare["size"] = float(next(iter_lines)[1])
+                light_flare["brightness_var"] = next(iter_lines)[1]
+                light_flare["brightness"] = float(next(iter_lines)[1])
+                light_flare["z_offset"] = float(next(iter_lines)[1])
+                light_flare["effect"] = int(next(iter_lines)[1])
+                light_flare["ramp_time"] = float(next(iter_lines)[1])
+                light_flare["texture"] = next(iter_lines)[1]
 
         elif current_command == "[light_enh_2]":
             if param_ind == -1:
-                cfg_data[current_lod]["meshes"][current_mesh]["light_flares"].append({"type": "[light_enh_2]"})
-            light_flare = cfg_data[current_lod]["meshes"][current_mesh]["light_flares"][-1]
-            if param_ind == 0:
-                light_flare["x_pos"] = float(line)
-            elif param_ind == 1:
-                light_flare["y_pos"] = float(line)
-            elif param_ind == 2:
-                light_flare["z_pos"] = float(line)
-            elif param_ind == 3:
-                light_flare["x_fwd"] = float(line)
-            elif param_ind == 4:
-                light_flare["y_fwd"] = float(line)
-            elif param_ind == 5:
-                light_flare["z_fwd"] = float(line)
-            elif param_ind == 6:
-                light_flare["x_rot"] = float(line)
-            elif param_ind == 7:
-                light_flare["y_rot"] = float(line)
-            elif param_ind == 8:
-                light_flare["z_rot"] = float(line)
-            elif param_ind == 9:
-                light_flare["omni"] = int(line) == 1
-            elif param_ind == 10:
-                light_flare["rotating"] = int(line)
-            elif param_ind == 11:
-                light_flare["col_r"] = float(line) / 255
-            elif param_ind == 12:
-                light_flare["col_g"] = float(line) / 255
-            elif param_ind == 13:
-                light_flare["col_b"] = float(line) / 255
-            elif param_ind == 14:
-                light_flare["size"] = float(line)
-            elif param_ind == 15:
-                light_flare["max_brightness_angle"] = float(line)
-            elif param_ind == 16:
-                light_flare["min_brightness_angle"] = float(line)
-            elif param_ind == 17:
-                light_flare["brightness_var"] = line
-            elif param_ind == 18:
-                light_flare["brightness"] = float(line)
-            elif param_ind == 19:
-                light_flare["z_offset"] = float(line)
-            elif param_ind == 20:
-                light_flare["effect"] = int(line)
-            elif param_ind == 21:
-                light_flare["cone_effect"] = int(line) == 1
-            elif param_ind == 22:
-                light_flare["ramp_time"] = float(line)
-            elif param_ind == 23:
-                light_flare["texture"] = line
+                cfg_data[current_lod]["light_flares"].append({"type": "[light_enh_2]"})
+                light_flare = cfg_data[current_lod]["light_flares"][-1]
+                light_flare["x_pos"] = float(next(iter_lines)[1])
+                light_flare["y_pos"] = float(next(iter_lines)[1])
+                light_flare["z_pos"] = float(next(iter_lines)[1])
+                light_flare["x_fwd"] = float(next(iter_lines)[1])
+                light_flare["y_fwd"] = float(next(iter_lines)[1])
+                light_flare["z_fwd"] = float(next(iter_lines)[1])
+                light_flare["x_rot"] = float(next(iter_lines)[1])
+                light_flare["y_rot"] = float(next(iter_lines)[1])
+                light_flare["z_rot"] = float(next(iter_lines)[1])
+                light_flare["omni"] = int(next(iter_lines)[1]) == 1
+                light_flare["rotating"] = int(next(iter_lines)[1])
+                light_flare["col_r"] = float(next(iter_lines)[1]) / 255
+                light_flare["col_g"] = float(next(iter_lines)[1]) / 255
+                light_flare["col_b"] = float(next(iter_lines)[1]) / 255
+                light_flare["size"] = float(next(iter_lines)[1])
+                light_flare["max_brightness_angle"] = float(next(iter_lines)[1])
+                light_flare["min_brightness_angle"] = float(next(iter_lines)[1])
+                light_flare["brightness_var"] = next(iter_lines)[1]
+                light_flare["brightness"] = float(next(iter_lines)[1])
+                light_flare["z_offset"] = float(next(iter_lines)[1])
+                light_flare["effect"] = int(next(iter_lines)[1])
+                light_flare["cone_effect"] = int(next(iter_lines)[1]) == 1
+                light_flare["ramp_time"] = float(next(iter_lines)[1])
+                light_flare["texture"] = next(iter_lines)[1]
 
         elif current_command == "[matl]" or current_command == "[matl_change]":
             if param_ind == 0:
@@ -698,6 +711,13 @@ def write_cfg(filepath, objs, context, selection_only):
 
             # Populate any cfg data in the scene
             write_additional_cfg_props(scene, f)
+
+            if "tree" in scene:
+                tree = scene["tree"]
+                f.write("[tree]\n{0}\n{1}\n{2}\n{3}\n{4}\n\n".format(*tree))
+
+            if "editor_only" in scene and scene["editor_only"]:
+                f.write("[editor_only]\n\n")
 
             f.write("\n###############################################################\n"
                     "\t\tBEGIN MODEL DATA\n"

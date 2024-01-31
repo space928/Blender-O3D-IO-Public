@@ -541,8 +541,9 @@ def generate_materials(cfg_materials, cfg_file_path, mat_counter, materials, mes
         if bpy.app.version < (2, 80):
             mat = mat_blender
             mat.diffuse_color = (diffuse_r, diffuse_g, diffuse_b)
+            mat.diffuse_intensity = 1
             mat.specular_hardness = spec_h
-            mat.specular_intensity = 1
+            mat.specular_intensity = 0
             mat.specular_color = (spec_r, spec_g, spec_b)
             mat.emit = np.mean(np.array(matl[2]) / np.max((np.array(matl[0][:3]), np.repeat(0.0001, 3)), axis=0))
         else:
